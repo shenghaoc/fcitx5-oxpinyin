@@ -1,0 +1,11 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Shenghao Chen <shenghaoc@outlook.com>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+#ifndef FCITX5_OXPINYIN_TEST_TESTDIR_H_
+#define FCITX5_OXPINYIN_TEST_TESTDIR_H_
+
+#define TESTING_SOURCE_DIR "@CMAKE_SOURCE_DIR@"
+#define TESTING_BINARY_DIR "@CMAKE_BINARY_DIR@"
+
+#endif // FCITX5_OXPINYIN_TEST_TESTDIR_H_

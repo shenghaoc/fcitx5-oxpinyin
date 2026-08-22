@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#ifndef FCITX5_OXPINYIN_PATHS_H_
+#define FCITX5_OXPINYIN_PATHS_H_
+
+/* Compiled-in fallback for the engine's system data directory; the
+ * OXPINYIN_SYSTEM_DATA_DIR env override wins at runtime. */
+#define OXPINYIN_COMPILED_DATADIR "@CMAKE_INSTALL_FULL_DATADIR@/oxpinyin"
+
+#endif /* FCITX5_OXPINYIN_PATHS_H_ */

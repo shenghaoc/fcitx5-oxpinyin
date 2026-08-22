@@ -1,0 +1,242 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+# The engine pin: a FIXED pinyin-rs main SHA, bumped deliberately (the same
+# discipline as the oracle pin at 0c5e80e), never floating on main HEAD.
+# 78b22ee contains the §3 constraint merges (#145/#146, merge commit f801cda).
+env:
+  OXPINYIN_SHA: 78b22ee1e65b0ef242cbb2ab595a946c61519941
+  OXPINYIN_DATA_VERSION: v1
+
+jobs:
+  clang-format:
+    name: Check clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm git clang diffutils
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+      - uses: actions/checkout@v4
+      - uses: fcitx/github-actions@clang-format
+
+  data:
+    name: Assemble engine data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake autopoint libtool \
+            gettext gnome-common pkg-config curl tar python3 \
+            libglib2.0-dev libibus-dev libsqlite3-dev
+      - name: Install pinned libtkrzw
+        run: |
+          # Mirrors pinyin-rs .github/actions/install-tkrzw: Ubuntu ships no
+          # tkrzw package, so build the pinned tarball.
+          version=1.0.32
+          sha256=d3404dfac6898632b69780c0f0994c5f6ba962191a61c9b0f4b53ba8bb27731c
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+          curl -fsSL --retry 3 --retry-delay 5 \
+            -o tkrzw.tar.gz "https://dbmx.net/tkrzw/pkg/tkrzw-${version}.tar.gz"
+          echo "${sha256}  tkrzw.tar.gz" | sha256sum -c -
+          tar xzf tkrzw.tar.gz
+          cd "tkrzw-${version}"
+          ./configure
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+          pkg-config --modversion tkrzw
+      - uses: actions/checkout@v4
+        with:
+          repository: shenghaoc/pinyin-rs
+          ref: ${{ env.OXPINYIN_SHA }}
+          path: pinyin-rs
+      - name: Cache engine data
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: oxpinyin-data
+          key: oxpinyin-data-${{ env.OXPINYIN_DATA_VERSION }}-${{ env.OXPINYIN_SHA }}
+      - name: Build pinned oracle and export tables
+        if: steps.cache-data.outputs.cache-hit != 'true'
+        run: |
+          # The full pinned-oracle autotools pipeline is too heavy to re-run
+          # per compiler job, so the exported tables are cached by engine SHA
+          # (the sanctioned fallback) and shipped to build jobs as an artifact.
+          cd pinyin-rs
+          ./tools/oracle/build-oracle.sh --jobs "$(nproc)" \
+            --prefix "$GITHUB_WORKSPACE/oxpinyin-prefix"
+          export PINYIN_ORACLE_PREFIX="$GITHUB_WORKSPACE/oxpinyin-prefix"
+          cargo run --locked -p oxpinyin-migrate --features oracle-ffi -- \
+            export --out-dir "$GITHUB_WORKSPACE/oxpinyin-data"
+          ./tools/model/fetch-model.sh
+          cp target/model20/extracted/interpolation2.text \
+            "$GITHUB_WORKSPACE/oxpinyin-data/"
+          ls -la "$GITHUB_WORKSPACE/oxpinyin-data"
+      - name: Assert data complete
+        run: |
+          test -f oxpinyin-data/pinyin_index.redb
+          test -f oxpinyin-data/phrase_index.redb
+          test -f oxpinyin-data/bigram.redb
+          test -f oxpinyin-data/interpolation2.text
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oxpinyin-data
+          path: oxpinyin-data
+
+  build:
+    name: Build and test (${{ matrix.container }}, ${{ matrix.compiler }})
+    needs: [data]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - container: archlinux:latest
+            compiler: gcc
+            cxx_compiler: g++
+          - container: archlinux:latest
+            compiler: clang
+            cxx_compiler: clang++
+          # The target-distro signal.
+          - container: fedora:latest
+            compiler: gcc
+            cxx_compiler: g++
+    env:
+      CC: ${{ matrix.compiler }}
+      CXX: ${{ matrix.cxx_compiler }}
+    steps:
+      - name: Install dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            pacman -Syu --noconfirm base-devel clang cmake ninja git \
+              extra-cmake-modules fmt libuv boost rust fcitx5-chinese-addons
+          else
+            dnf install -y gcc-c++ clang cmake ninja-build git \
+              extra-cmake-modules fmt-devel libuv-devel boost-devel rust cargo \
+              fcitx5-chinese-addons
+          fi
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+      - uses: actions/checkout@v4
+      - name: Checkout fcitx5
+        uses: actions/checkout@v4
+        with:
+          repository: fcitx/fcitx5
+          path: fcitx5
+      - name: Cache fcitx5 data files
+        uses: actions/cache@v4
+        with:
+          path: 'fcitx5/**/*.tar.*'
+          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt') }}
+      - name: Build and Install fcitx5
+        uses: fcitx/github-actions@cmake
+        with:
+          path: fcitx5
+          cmake-option: >-
+            -DENABLE_KEYBOARD=Off -DENABLE_X11=Off -DENABLE_WAYLAND=Off -DENABLE_ENCHANT=Off
+            -DENABLE_DBUS=Off -DENABLE_SERVER=Off -DENABLE_EMOJI=Off -DUSE_SYSTEMD=Off
+      - name: Checkout pinned oxpinyin
+        uses: actions/checkout@v4
+        with:
+          repository: shenghaoc/pinyin-rs
+          ref: ${{ env.OXPINYIN_SHA }}
+          path: pinyin-rs
+      - name: Build and install oxpinyin (cargo cinstall)
+        run: |
+          cd pinyin-rs
+          cargo cinstall --locked -p oxpinyin-capi \
+            --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
+      - name: Download engine data
+        uses: actions/download-artifact@v4
+        with:
+          name: oxpinyin-data
+          path: oxpinyin-data
+      - name: Configure, build, test
+        run: |
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/oxpinyin-install/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOXPINYIN_SYSTEM_DATA_DIR="$GITHUB_WORKSPACE/oxpinyin-data" \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: clang-tidy (advisory, non-blocking)
+        if: matrix.container == 'archlinux:latest' && matrix.compiler == 'clang'
+        run: |
+          cmake -B build-tidy -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DOXPINYIN_SYSTEM_DATA_DIR=nonexistent \
+            -DOXPINYIN_USER_DATA_DIR=nonexistent || true
+          command -v clang-tidy || exit 0
+          clang-tidy -p build-tidy src/*.cpp || true
+
+  sanitizer:
+    name: ctest under ASan/UBSan
+    needs: [data]
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm base-devel clang cmake ninja git \
+            extra-cmake-modules fmt libuv boost rust fcitx5-chinese-addons
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+      - uses: actions/checkout@v4
+      - name: Checkout fcitx5
+        uses: actions/checkout@v4
+        with:
+          repository: fcitx/fcitx5
+          path: fcitx5
+      - name: Cache fcitx5 data files
+        uses: actions/cache@v4
+        with:
+          path: 'fcitx5/**/*.tar.*'
+          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt') }}
+      - name: Build and Install fcitx5
+        uses: fcitx/github-actions@cmake
+        with:
+          path: fcitx5
+          cmake-option: >-
+            -DENABLE_KEYBOARD=Off -DENABLE_X11=Off -DENABLE_WAYLAND=Off -DENABLE_ENCHANT=Off
+            -DENABLE_DBUS=Off -DENABLE_SERVER=Off -DENABLE_EMOJI=Off -DUSE_SYSTEMD=Off
+      - name: Checkout pinned oxpinyin
+        uses: actions/checkout@v4
+        with:
+          repository: shenghaoc/pinyin-rs
+          ref: ${{ env.OXPINYIN_SHA }}
+          path: pinyin-rs
+      - name: Build and install oxpinyin (cargo cinstall)
+        run: |
+          cd pinyin-rs
+          cargo cinstall --locked -p oxpinyin-capi \
+            --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
+      - name: Download engine data
+        uses: actions/download-artifact@v4
+        with:
+          name: oxpinyin-data
+          path: oxpinyin-data
+      - name: Configure, build, test under sanitizers
+        run: |
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/oxpinyin-install/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DENABLE_SANITIZER=ON \
+            -DOXPINYIN_SYSTEM_DATA_DIR="$GITHUB_WORKSPACE/oxpinyin-data" \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build
+          ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build --output-on-failure

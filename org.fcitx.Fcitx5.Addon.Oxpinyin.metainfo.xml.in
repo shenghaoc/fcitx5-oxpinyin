@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component type="addon">
+  <id>org.fcitx.Fcitx5.Addon.Oxpinyin</id>
+  <extends>org.fcitx.Fcitx5</extends>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0+</project_license>
+  <name>Oxpinyin for Fcitx 5</name>
+  <summary>Pinyin input method powered by the oxpinyin engine</summary>
+  <developer id="io.github.shenghaoc">
+      <name>Shenghao Chen</name>
+  </developer>
+  <url type="homepage">https://github.com/shenghaoc/fcitx5-oxpinyin</url>
+  <url type="bugtracker">https://github.com/shenghaoc/fcitx5-oxpinyin/issues</url>
+  <url type="vcs-browser">https://github.com/shenghaoc/fcitx5-oxpinyin</url>
+  <project_group>Fcitx</project_group>
+  <releases>
+    <release version="0.1.0" date="2026-08-23"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
