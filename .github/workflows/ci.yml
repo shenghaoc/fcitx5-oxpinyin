@@ -39,7 +39,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y autoconf automake autopoint libtool \
             gettext gnome-common pkg-config curl tar python3 \
-            libglib2.0-dev libibus-dev libsqlite3-dev
+            libglib2.0-dev libibus-1.0-dev libsqlite3-dev
       - name: Install pinned libtkrzw
         run: |
           # Mirrors pinyin-rs .github/actions/install-tkrzw: Ubuntu ships no
