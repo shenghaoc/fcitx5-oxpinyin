@@ -27,6 +27,10 @@
       pinned OXPINYIN_SHA; data job (oracle export + fetch-model, cached).
 - [x] Gates: gcc+clang configure/build, clang-format, ctest (podman
       archlinux:latest, mirrors CI), ASan/UBSan ctest; commit; report.
+- [x] Post-review: commit-msg hook + trailer lint ported (canonical
+      `Assisted-by: Z.ai:GLM-5.3` house form; `.githooks/commit-msg` delegates
+      to `.github/scripts/lint-commits.sh`; CI trailer-lint + trailer-test);
+      history rewritten to canonical trailers from the root.
 
 ## Phase 2 — engine loop (pending GO)
 

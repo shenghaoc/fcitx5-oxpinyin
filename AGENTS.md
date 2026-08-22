@@ -103,13 +103,27 @@ bisection across both repos.
 ## Commit identity
 
 Every commit: author AND committer `Shenghao Chen <shenghaoc@outlook.com>`,
-plus an `Assisted-by:` trailer naming the assisting vendor and model. Enforce
-with:
+plus an `Assisted-by:` trailer in the house form `Agent:Model` with nothing
+after the model — e.g. `Assisted-by: Z.ai:GLM-5.3`. Set up with:
 
 ```sh
 git config user.name "Shenghao Chen"
 git config user.email "shenghaoc@outlook.com"
+git config core.hooksPath .githooks   # activate the commit-msg hook
 ```
+
+The commit-message linter (`.github/scripts/lint-commits.sh`) enforces this
+at commit time via `.githooks/commit-msg` (R1–R2) and in CI on every pushed
+range and PR commit (R1, R2, R4); the rule logic is self-tested by
+`test/lint-commits.test.sh`:
+
+- **R1** — no AI agent identity in `Co-authored-by:` (email match, never name
+  match). AI attribution goes in `Assisted-by:` only.
+- **R2** — `Assisted-by:` house form: `AGENT:MODEL` shape with nothing after
+  the model; the `MODEL` token must contain at least one ASCII letter; no
+  placeholder text; no duplicate lines.
+- **R4** — no AI agent identity as git author or committer (CI-only; the
+  hook runs before the commit exists).
 
 ## Explain-back
 

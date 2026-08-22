@@ -1,0 +1,63 @@
+name: commit-trailers
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  # Job names are required-check contexts; keep them distinct from CI's job
+  # names (a bare-name collision once masked a gate in the engine repo).
+  trailer-lint:
+    name: trailer-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute lint range
+        id: range
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -eu
+          # PR: the event payload's base.sha goes stale as the base branch
+          # advances; compute the merge-base at lint time so only the commits
+          # the PR introduces are linted. Push: lint before..after; on the
+          # first push of a branch (zero before) lint everything, root
+          # included.
+          if [ "$EVENT" = pull_request ]; then
+            git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            BEFORE=$(git merge-base "origin/${BASE_REF}" "$AFTER")
+          elif ! git rev-parse --verify --quiet "${BEFORE}^{commit}" >/dev/null 2>&1; then
+            ROOT=$(git rev-list --max-parents=0 "$AFTER" | tail -n 1)
+            git log -1 --format='%B' "$ROOT" >/tmp/root-msg
+            .github/scripts/lint-commits.sh --hook /tmp/root-msg
+            BEFORE="$ROOT"
+          fi
+          echo "before=$BEFORE" >>"$GITHUB_OUTPUT"
+      - name: Lint commits against trailer rules
+        run: .github/scripts/lint-commits.sh "${{ steps.range.outputs.before }}" "${{ github.sha }}"
+
+  # Gate the linter itself: run the self-contained fixture harness on every
+  # push/PR so a change to the script or workflow cannot silently regress the
+  # rule logic.
+  trailer-test:
+    name: trailer-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run linter test harness
+        run: test/lint-commits.test.sh
