@@ -2,7 +2,7 @@
 
 A [fcitx5](https://fcitx-im.org) input-method addon for Simplified Chinese
 pinyin (and, later, double pinyin and zhuyin), powered by the
-[oxpinyin](https://github.com/shenghaoc/pinyin-rs) engine through its C ABI
+[oxpinyin](https://github.com/shenghaoc/oxpinyin) engine through its C ABI
 (`libpinyin_capi` / `pinyin.h`).
 
 This repository is the **thin C++20 shell only**: key-event handling, candidate
@@ -42,8 +42,8 @@ Requirements: CMake ≥ 3.21, a C++20 compiler, fcitx5 development files
 `pkg-config --cflags --libs oxpinyin` finds it:
 
 ```sh
-git clone https://github.com/shenghaoc/pinyin-rs ../pinyin-rs
-cd ../pinyin-rs && git checkout <pinned-sha>   # see .github/workflows/ci.yml
+git clone https://github.com/shenghaoc/oxpinyin ../oxpinyin
+cd ../oxpinyin && git checkout <pinned-sha>   # see .github/workflows/ci.yml
 cargo cinstall -p oxpinyin-capi --prefix=$HOME/.local/oxpinyin --libdir=lib
 cd ../fcitx5-oxpinyin
 export PKG_CONFIG_PATH=$HOME/.local/oxpinyin/lib/pkgconfig:$PKG_CONFIG_PATH

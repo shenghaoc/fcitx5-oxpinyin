@@ -45,7 +45,7 @@ Resolution order: env `OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR`
 
 ## Engine pin
 
-CI builds the sibling pinyin-rs checkout at a **fixed main SHA**
+CI builds the sibling oxpinyin checkout at a **fixed main SHA**
 (`OXPINYIN_SHA` in `.github/workflows/ci.yml`; currently `78b22ee`, which
 contains the §3 constraint merges #145/#146, merge commit `f801cda`). Bumps
 are deliberate, like the oracle pin at `0c5e80e`. Never float on main HEAD.

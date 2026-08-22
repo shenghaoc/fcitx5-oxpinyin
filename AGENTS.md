@@ -3,7 +3,7 @@
 ## What this repository is
 
 A fcitx5 input-method addon (C++20 shell) whose engine is
-[oxpinyin](https://github.com/shenghaoc/pinyin-rs) via its C ABI
+[oxpinyin](https://github.com/shenghaoc/oxpinyin) via its C ABI
 (`libpinyin_capi`, header `pinyin.h`). The Rust stays in oxpinyin; this repo is
 the thin shell only — key events, candidate list, preedit, configuration,
 fcitx5 addon plumbing. Structural template: fcitx5-cskk (C++ shell over a Rust
@@ -73,7 +73,7 @@ status lives in `.kiro/specs/foundation/`.
 
 Requirements: CMake ≥ 3.21, C++20, fcitx5 ≥ 5.1.13 dev files,
 `extra-cmake-modules`, and oxpinyin discoverable via
-`pkg-config --cflags --libs oxpinyin` (build it from the pinned pinyin-rs
+`pkg-config --cflags --libs oxpinyin` (build it from the pinned oxpinyin
 checkout with `cargo cinstall -p oxpinyin-capi --prefix=<p> --libdir=lib`).
 
 ```sh
@@ -94,7 +94,7 @@ Gates before any STOP:
 
 ### Engine pin policy
 
-The CI sibling pinyin-rs checkout is pinned to a **fixed main SHA** (see
+The CI sibling oxpinyin checkout is pinned to a **fixed main SHA** (see
 `OXPINYIN_SHA` in `.github/workflows/ci.yml`), bumped deliberately the same
 way the oracle is pinned at `0c5e80e` — never floating on `main` HEAD. An
 addon building against a moving engine main is non-reproducible and breaks

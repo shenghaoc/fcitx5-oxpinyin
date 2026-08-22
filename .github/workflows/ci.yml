@@ -10,11 +10,11 @@ on:
       - main
       - master
 
-# The engine pin: a FIXED pinyin-rs main SHA, bumped deliberately (the same
+# The engine pin: a FIXED oxpinyin main SHA, bumped deliberately (the same
 # discipline as the oracle pin at 0c5e80e), never floating on main HEAD.
 # 78b22ee contains the §3 constraint merges (#145/#146, merge commit f801cda).
 env:
-  OXPINYIN_SHA: 78b22ee1e65b0ef242cbb2ab595a946c61519941
+  OXPINYIN_SHA: 78b22eefa28dbbbfee20204f93e4a78be8ae7868
   OXPINYIN_DATA_VERSION: v1
 
 jobs:
@@ -60,9 +60,9 @@ jobs:
           pkg-config --modversion tkrzw
       - uses: actions/checkout@v4
         with:
-          repository: shenghaoc/pinyin-rs
+          repository: shenghaoc/oxpinyin
           ref: ${{ env.OXPINYIN_SHA }}
-          path: pinyin-rs
+          path: oxpinyin
       - name: Cache engine data
         id: cache-data
         uses: actions/cache@v4
@@ -75,7 +75,7 @@ jobs:
           # The full pinned-oracle autotools pipeline is too heavy to re-run
           # per compiler job, so the exported tables are cached by engine SHA
           # (the sanctioned fallback) and shipped to build jobs as an artifact.
-          cd pinyin-rs
+          cd oxpinyin
           ./tools/oracle/build-oracle.sh --jobs "$(nproc)" \
             --prefix "$GITHUB_WORKSPACE/oxpinyin-prefix"
           export PINYIN_ORACLE_PREFIX="$GITHUB_WORKSPACE/oxpinyin-prefix"
@@ -151,12 +151,12 @@ jobs:
       - name: Checkout pinned oxpinyin
         uses: actions/checkout@v4
         with:
-          repository: shenghaoc/pinyin-rs
+          repository: shenghaoc/oxpinyin
           ref: ${{ env.OXPINYIN_SHA }}
-          path: pinyin-rs
+          path: oxpinyin
       - name: Build and install oxpinyin (cargo cinstall)
         run: |
-          cd pinyin-rs
+          cd oxpinyin
           cargo cinstall --locked -p oxpinyin-capi \
             --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
       - name: Download engine data
@@ -218,12 +218,12 @@ jobs:
       - name: Checkout pinned oxpinyin
         uses: actions/checkout@v4
         with:
-          repository: shenghaoc/pinyin-rs
+          repository: shenghaoc/oxpinyin
           ref: ${{ env.OXPINYIN_SHA }}
-          path: pinyin-rs
+          path: oxpinyin
       - name: Build and install oxpinyin (cargo cinstall)
         run: |
-          cd pinyin-rs
+          cd oxpinyin
           cargo cinstall --locked -p oxpinyin-capi \
             --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
       - name: Download engine data
