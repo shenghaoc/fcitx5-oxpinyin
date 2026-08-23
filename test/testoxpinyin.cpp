@@ -17,6 +17,7 @@
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+#include <fcitx/userinterfacemanager.h>
 
 #include "oxpinyinconfig.h"
 
@@ -69,6 +70,50 @@ void testLoadAndPassthrough(Instance *instance) {
             uuid, Key("Ctrl+A"), false));
         FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
         FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+    });
+}
+
+// Optional-modules invariant: chttrans/fullwidth (and cloudpinyin) are
+// optional dependencies. With none installed — the CI image ships no
+// fcitx5-chinese-addons, and this harness enables only oxpinyin — activate()
+// must run its guarded toggle-wiring without crashing, no toggle Action is
+// present to add, and composition/commit still work. This is THE invariant
+// the wiring must preserve: the addon loads and functions with none of the
+// optional modules present.
+void testOptionalModulesAbsent(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        // Control+space activates oxpinyin, running OxpinyinEngine::activate:
+        // it requests chttrans/fullwidth and tries to add their toggle
+        // Actions. All are absent here, so the guarded path is exercised.
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        FCITX_ASSERT(instance->inputMethod(ic) == "oxpinyin");
+
+        // The modules are not loaded, so none of their Actions are registered.
+        FCITX_ASSERT(
+            !instance->userInterfaceManager().lookupAction("chttrans"));
+        FCITX_ASSERT(
+            !instance->userInterfaceManager().lookupAction("fullwidth"));
+        FCITX_ASSERT(
+            !instance->userInterfaceManager().lookupAction("cloudpinyin"));
+
+        // Composition still works with the modules absent.
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!ic->inputPanel().preedit().toString().empty() ||
+                     !ic->inputPanel().clientPreedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
 
         instance->deactivate();
     });
@@ -942,6 +987,7 @@ int main() {
     instance.addonManager().registerDefaultLoader(nullptr);
 
     testLoadAndPassthrough(&instance);
+    testOptionalModulesAbsent(&instance);
     testTypeCommit(&instance);
     testBackspace(&instance);
     testEscape(&instance);

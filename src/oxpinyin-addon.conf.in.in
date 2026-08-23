@@ -14,7 +14,7 @@ Library=oxpinyin
 [Addon/OptionalDependencies]
 0=quickphrase
 1=chttrans
-2=cloudpinyin
+2=fullwidth
 3=notifications
 4=spell
 5=pinyinhelper
