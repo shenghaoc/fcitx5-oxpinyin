@@ -383,8 +383,9 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         if (buffer_.empty()) {
             return;
         }
-        auto committed = sentence();
-        const bool fromSentence = !committed.empty();
+        const auto decoded = sentence();
+        const bool fromSentence = !decoded.empty();
+        auto committed = decoded;
         if (!fromSentence) {
             committed = buffer_;
         } else if (parsedLen_ < buffer_.size()) {
@@ -392,10 +393,8 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         }
         ic_->commitString(committed);
         if (fromSentence) {
-            // Train the decoded commit; a raw-buffer passthrough carries
-            // nothing to train.
             pinyin_train(instance_.get(), 0);
-            pinyin_remember_user_input(instance_.get(), committed.c_str(), -1);
+            pinyin_remember_user_input(instance_.get(), decoded.c_str(), -1);
         }
         keyEvent.filterAndAccept();
         resetState();
@@ -585,9 +584,12 @@ void OxpinyinState::updateUI() {
         return;
     }
 
-    pinyin_guess_sentence(instance_.get());
-    const auto converted = sentence();
-    const auto aux = auxText();
+    std::string converted, aux;
+    if (parsedLen_ > 0) {
+        pinyin_guess_sentence(instance_.get());
+        converted = sentence();
+        aux = auxText();
+    }
 
     if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
         // Wiki guidance: the client cursor stays pinned at 0 (the
