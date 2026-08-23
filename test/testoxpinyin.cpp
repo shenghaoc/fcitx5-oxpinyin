@@ -20,6 +20,8 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
 #include <fcitx/userinterfacemanager.h>
+#include <string>
+#include <vector>
 
 #include "oxpinyinconfig.h"
 
@@ -1141,19 +1143,169 @@ void testPunctuationDismissesPrediction(Instance *instance) {
     });
 }
 
+#ifdef OXPINYIN_TEST_CLOUDPINYIN
+// The "☁" (U+2601) unicode char cloudpinyin shows as the loading placeholder
+// until an async result fills the row.
+constexpr char kCloudPlaceholder[] = "\xe2\x98\x81";
+
+bool listHasCloudPlaceholder(InputContext *ic) {
+    const auto list = ic->inputPanel().candidateList();
+    if (!list) {
+        return false;
+    }
+    auto *bulk = list->toBulk();
+    if (!bulk) {
+        return false;
+    }
+    for (int i = 0; i < bulk->totalSize(); ++i) {
+        if (bulk->candidateFromAll(i).text().toString() == kCloudPlaceholder) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ON build: with Cloud Pinyin enabled and the real cloudpinyin module loaded,
+// typing a full-pinyin buffer issues a cloud request and injects the cloud row
+// at the configured slot (CloudPinyinIndex, 1-based). The row carries the "☁"
+// placeholder from the instant the request is issued — this is the
+// request-issued + row-appears-at-slot assertion, deterministic whether or not
+// CI can reach a cloud endpoint. Selecting a FILLED cloud row runs the
+// engine-independent workaround (OxpinyinState::cloudSelected: direct commit +
+// reset, no engine training); that fill needs the async network result, so the
+// positive commit is not asserted here.
+void testCloudRowAtSlot(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        FCITX_ASSERT(oxpinyin);
+        // The real cloudpinyin module must load in the ON job.
+        auto *cloud = instance->addonManager().addon("cloudpinyin", true);
+        FCITX_ASSERT(cloud);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("CloudPinyinEnabled", "True");
+        config.setValueByPath("CloudPinyinIndex", "2");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list);
+        auto *bulk = list->toBulk();
+        FCITX_ASSERT(bulk);
+        // Slot index 1 (CloudPinyinIndex 2, 1-based) is the cloud placeholder;
+        // the engine candidates surround it.
+        FCITX_ASSERT(bulk->totalSize() > 1);
+        FCITX_ASSERT(bulk->candidateFromAll(1).text().toString() ==
+                     kCloudPlaceholder);
+
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+// Toggle off: with Cloud Pinyin disabled (the default), no cloud row appears
+// and the pinyin candidate list is intact.
+void testCloudToggleOff(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        // Pinyin candidates present, cloud row absent.
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        FCITX_ASSERT(!listHasCloudPlaceholder(ic));
+
+        instance->deactivate();
+    });
+}
+
+// Toggle hotkey: the module's toggleKey flips CloudPinyinEnabled live. From a
+// disabled composition, pressing it enables cloud, is consumed (filtered), and
+// the row appears at the slot. A distinct buffer keeps this a fresh cache miss
+// so the row is still the placeholder, not a synchronously filled result.
+void testCloudToggleHotkey(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("beijing")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!listHasCloudPlaceholder(ic));
+
+        // The module's default toggle key: consumed by the engine, and the
+        // cloud row then appears at the slot.
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+Alt+Shift+C"), false));
+        FCITX_ASSERT(listHasCloudPlaceholder(ic));
+
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+#endif
+
 } // namespace
 
 int main() {
     // Include fcitx's system package-data directory so the isolated harness can
     // discover the real Spell module metadata and its built-in dictionary.
     // All system addons remain disabled unless explicitly named below.
+    std::vector<std::string> dataDirs{
+        TESTING_BINARY_DIR "/test",
+        StandardPaths::fcitxPath("pkgdatadir").string()};
+#ifdef OXPINYIN_CLOUDPINYIN_DATADIR
+    // cloudpinyin.conf lives under the prefix where find_package(CloudPinyin)
+    // resolved the module, which need not be fcitx5 core's pkgdatadir above
+    // (a CMAKE_PREFIX_PATH / split-prefix install). Add it so the real
+    // cloudpinyin module is always loadable in the ON build.
+    dataDirs.emplace_back(OXPINYIN_CLOUDPINYIN_DATADIR);
+#endif
     setupTestingEnvironment(TESTING_BINARY_DIR, {TESTING_BINARY_DIR "/src"},
-                            {TESTING_BINARY_DIR "/test",
-                             StandardPaths::fcitxPath("pkgdatadir").string()});
+                            dataDirs);
     char arg0[] = "testoxpinyin";
     char arg1[] = "--disable=all";
 #ifdef OXPINYIN_TEST_NO_SPELL
     char arg2[] = "--enable=testim,testfrontend,oxpinyin";
+#elif defined(OXPINYIN_TEST_CLOUDPINYIN)
+    // The cloud tests drive the real cloudpinyin module, so it must be enabled
+    // alongside spell and the harness addons (it stays on-demand; enabling only
+    // makes it loadable).
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,cloudpinyin";
 #else
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell";
 #endif
@@ -1190,6 +1342,11 @@ int main() {
     testUnmappedPunctPassthrough(&instance);
     testPunctuationMidComposition(&instance);
     testPunctuationDismissesPrediction(&instance);
+#ifdef OXPINYIN_TEST_CLOUDPINYIN
+    testCloudRowAtSlot(&instance);
+    testCloudToggleOff(&instance);
+    testCloudToggleHotkey(&instance);
+#endif
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
     instance.exec();

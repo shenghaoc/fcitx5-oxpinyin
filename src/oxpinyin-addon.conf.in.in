@@ -17,4 +17,4 @@ Library=oxpinyin
 2=fullwidth
 3=notifications
 4=spell
-5=pinyinhelper
+5=pinyinhelper@OXPINYIN_CLOUDPINYIN_OPTDEP@

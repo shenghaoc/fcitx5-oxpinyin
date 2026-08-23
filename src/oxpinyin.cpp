@@ -35,6 +35,14 @@
 #include <fcitx/userinterface.h>
 #include <fcitx/userinterfacemanager.h>
 
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+// fcitx5-chinese-addons' cloudpinyin module: the request/toggleKey/resetError
+// ABI plus the header-only CloudPinyinCandidateWord we reuse (it issues the
+// async request in its ctor with a watch() ref and self-fills the row). Only
+// pulled in for the ENABLE_CLOUDPINYIN build; the baseline stays header-free.
+#include "cloudpinyin_public.h"
+#endif
+
 FCITX_DEFINE_LOG_CATEGORY(oxpinyin_log, "oxpinyin");
 
 #define OXPINYIN_DEBUG() FCITX_LOGC(oxpinyin_log, Debug)
@@ -283,8 +291,39 @@ void OxpinyinEngine::keyEvent(const InputMethodEntry & /*entry*/,
         return;
     }
     OXPINYIN_DEBUG() << "keyEvent: " << keyEvent.key().toString();
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+    // The cloud toggle hotkey is handled ahead of composition, mirroring
+    // chinese-addons' handleCloudpinyinTrigger. Reflect the flip in any live
+    // composition so the row appears/disappears at once.
+    if (!keyEvent.isRelease() && handleCloudToggle(keyEvent)) {
+        auto *st = keyEvent.inputContext()->propertyFor(&factory_);
+        if (st->composing()) {
+            st->refresh();
+        }
+        keyEvent.filterAndAccept();
+        return;
+    }
+#endif
     keyEvent.inputContext()->propertyFor(&factory_)->keyEvent(keyEvent);
 }
+
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+bool OxpinyinEngine::handleCloudToggle(KeyEvent &keyEvent) {
+    auto *cloud = cloudpinyin();
+    if (!cloud ||
+        !keyEvent.key().checkKeyList(cloud->call<ICloudPinyin::toggleKey>())) {
+        return false;
+    }
+    const bool enabled = !*config_.cloudPinyinEnabled;
+    config_.cloudPinyinEnabled.setValue(enabled);
+    safeSaveAsIni(config_, kConfigFile);
+    if (enabled) {
+        // Clear any latched fetch-error backoff so the next request is tried.
+        cloud->call<ICloudPinyin::resetError>();
+    }
+    return true;
+}
+#endif
 
 void OxpinyinEngine::activate(const InputMethodEntry & /*entry*/,
                               InputContextEvent &event) {
@@ -926,6 +965,74 @@ void OxpinyinState::selectPredicted(size_t index) {
     enterPredicting(committed);
 }
 
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+void OxpinyinState::maybeAddCloudCandidate(CommonCandidateList &list) {
+    auto *cloud = engine_->cloudpinyin();
+    if (!cloud || !*engine_->config().cloudPinyinEnabled) {
+        return;
+    }
+    // Full-pinyin only: the raw buffer IS the pinyin string the cloud consumes.
+    // Double-pinyin/zhuyin raw keys are not, and the engine ABI exposes no
+    // clean full-pinyin extractor for them, so cloud is skipped there.
+    if (engine_->config().inputScheme.value() !=
+        OxpinyinInputScheme::FullPinyin) {
+        return;
+    }
+    // Only an unpinned, fully-parsed buffer, and never in a password field —
+    // the same gate as chinese-addons' fullResult + PasswordOrSensitive check.
+    if (buffer_.empty() || cursor_ != 0 || parsedLen_ != buffer_.size()) {
+        return;
+    }
+    if (ic_->capabilityFlags().testAny(CapabilityFlag::PasswordOrSensitive)) {
+        return;
+    }
+
+    // Reused CloudPinyinCandidateWord: its ctor fires the async request with a
+    // watch() ref and shows the "☁" placeholder until it self-fills; a stale
+    // callback after the list is rebuilt is safely ignored. Our select
+    // callback is the engine-independent workaround (cloudSelected).
+    auto cand = std::make_unique<CloudPinyinCandidateWord>(
+        cloud, buffer_, /*selectedSentence=*/std::string(), /*keep=*/false, ic_,
+        [engine = engine_](InputContext *ic, const std::string &selected,
+                           const std::string &word) {
+            engine->state(ic)->cloudSelected(selected, word);
+        });
+
+    // A cache hit fills synchronously in the ctor: skip a redundant row if the
+    // engine already offers this exact word (as chinese-addons does). The
+    // async path dedups itself later via CloudPinyinCandidateWord::update().
+    if (cand->filled() && !cand->word().empty()) {
+        for (int i = 0; i < list.totalSize(); ++i) {
+            if (list.candidateFromAll(i).text().toString() == cand->word()) {
+                return;
+            }
+        }
+    }
+
+    // Clamp the 1-based slot into the current list; append if it runs past.
+    const int slot = std::clamp(*engine_->config().cloudPinyinIndex - 1, 0,
+                                list.totalSize());
+    list.insert(slot, std::move(cand));
+}
+
+void OxpinyinState::cloudSelected(const std::string &selected,
+                                  const std::string &word) {
+    if (word.empty()) {
+        return;
+    }
+    const std::string committed = selected + word;
+    // The engine-independent workaround: commit the cloud hanzi directly and
+    // reset. No pinyin_choose_candidate, no pinyin_train, no constraints, and
+    // no pinyin_remember_user_input — the engine's selection/constraint/
+    // training machinery is never touched on the cloud path.
+    ic_->commitString(committed);
+    resetState();
+    if (*engine_->config().predictWords) {
+        enterPredicting(committed);
+    }
+}
+#endif
+
 void OxpinyinState::updateUI() {
     auto &panel = ic_->inputPanel();
     panel.reset();
@@ -1030,6 +1137,11 @@ void OxpinyinState::updateUI() {
         if (spellPosition >= static_cast<int>(pinyinCandidates.size())) {
             appendSpellCandidates();
         }
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+        // Cloud row lands at its configured slot in the finished list (after
+        // spell/pinyin interleave), via the same direct-commit workaround.
+        maybeAddCloudCandidate(*list);
+#endif
         panel.setCandidateList(std::move(list));
     }
 
