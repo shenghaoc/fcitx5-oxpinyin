@@ -5,10 +5,12 @@
 #include "testdir.h"
 #include "testfrontend_public.h"
 
+#include <algorithm>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/macros.h>
+#include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/testing.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/addonmanager.h>
@@ -343,6 +345,108 @@ void testConfigApply(Instance *instance) {
         instance->deactivate();
     });
 }
+
+// Spell integration: the bundled fcitx Spell dictionary supplies real English
+// candidates. Uppercase input occupies slot 0; lower-case English-looking
+// input follows the first pinyin candidate in slot 1.
+#ifndef OXPINYIN_TEST_NO_SPELL
+void testSpellCandidates(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("SpellEnabled", "True");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("Helo")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto uppercase = ic->inputPanel().candidateList();
+        FCITX_ASSERT(uppercase && !uppercase->empty());
+        const auto uppercaseWord = uppercase->candidate(0).text().toString();
+        FCITX_ASSERT(!uppercaseWord.empty());
+        FCITX_ASSERT(
+            std::all_of(uppercaseWord.begin(), uppercaseWord.end(), [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            }));
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(uppercaseWord);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("1"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        for (const auto c : std::string("rhythm")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto lowercase = ic->inputPanel().candidateList();
+        FCITX_ASSERT(lowercase && lowercase->size() > 1);
+        FCITX_ASSERT(lowercase->candidate(1).text().toString() == "rhythm");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        config.setValueByPath("SpellEnabled", "False");
+        oxpinyin->setConfig(config);
+        for (const auto c : std::string("rhythm")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto disabled = ic->inputPanel().candidateList();
+        FCITX_ASSERT(disabled && !disabled->empty());
+        for (int i = 0; i < disabled->size(); ++i) {
+            FCITX_ASSERT(disabled->candidate(i).text().toString() != "rhythm");
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        config.setValueByPath("SpellEnabled", "True");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+#else
+void testSpellUnavailable(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // This reaches spellHint(), but the disabled Spell module returns
+        // null. The initial uppercase key must remain a client key.
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("H"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        instance->deactivate();
+    });
+}
+#endif
 
 // Phase 3: scheme switch drives the parse mode — zhuyin parses a bopomofo
 // key sequence (standard layout: a=ㄇ, 8=ㄚ), full pinyin still works
@@ -972,15 +1076,19 @@ void testPunctuationDismissesPrediction(Instance *instance) {
 } // namespace
 
 int main() {
-    // No pkgdatadir append: that was only ever needed to reach
-    // chinese-addons' punctuation.conf. setupTestingEnvironment already
-    // adds fcitxPath("addondir") and fcitxPath("pkgdatadir", "testing")
-    // itself, which is where the TestFrontend addon lives.
+    // Include fcitx's system package-data directory so the isolated harness can
+    // discover the real Spell module metadata and its built-in dictionary.
+    // All system addons remain disabled unless explicitly named below.
     setupTestingEnvironment(TESTING_BINARY_DIR, {TESTING_BINARY_DIR "/src"},
-                            {TESTING_BINARY_DIR "/test"});
+                            {TESTING_BINARY_DIR "/test",
+                             StandardPaths::fcitxPath("pkgdatadir").string()});
     char arg0[] = "testoxpinyin";
     char arg1[] = "--disable=all";
+#ifdef OXPINYIN_TEST_NO_SPELL
     char arg2[] = "--enable=testim,testfrontend,oxpinyin";
+#else
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell";
+#endif
     char *argv[] = {arg0, arg1, arg2};
     fcitx::Log::setLogRule("default=5,oxpinyin=5");
     fcitx::Instance instance(FCITX_ARRAY_SIZE(argv), argv);
@@ -994,6 +1102,11 @@ int main() {
     testCandidatesAndPassthrough(&instance);
     testAuxPreedit(&instance);
     testConfigApply(&instance);
+#ifndef OXPINYIN_TEST_NO_SPELL
+    testSpellCandidates(&instance);
+#else
+    testSpellUnavailable(&instance);
+#endif
     testSchemeSwitchZhuyin(&instance);
     testPartialChoiceContinues(&instance);
     testBackspaceUnpins(&instance);
