@@ -27,6 +27,9 @@ extern "C" {
 namespace fcitx {
 
 class OxpinyinState;
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+class CommonCandidateList;
+#endif
 
 class OxpinyinEngine final : public InputMethodEngineV3 {
 public:
@@ -70,11 +73,21 @@ private:
     // matching status-area toggle is then simply not added (activate()). Both
     // conversions are the modules' own global CommitFilters — the shell wires
     // only the per-input-context toggle Action, never any conversion itself.
-    // (cloudpinyin is intentionally NOT wired: its typed request() call needs
-    // cloudpinyin_public.h at build time, which CI does not ship; keeping the
-    // addon header-free is the load-without-modules invariant.)
     FCITX_ADDON_DEPENDENCY_LOADER(chttrans, instance_->addonManager());
     FCITX_ADDON_DEPENDENCY_LOADER(fullwidth, instance_->addonManager());
+
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+    // Cloud Pinyin toggle hotkey (the module's toggleKey list): flips
+    // CloudPinyinEnabled, persists it, and clears the module's error state on
+    // enable. Returns true when the key was the toggle and was consumed.
+    bool handleCloudToggle(KeyEvent &keyEvent);
+
+    // Optional cloudpinyin module (fcitx5-chinese-addons), resolved by name at
+    // runtime. Returns null when the module is absent/disabled, so every cloud
+    // path is guarded on cloudpinyin() and the addon runs unaffected. Reached
+    // only over the addon ABI (request/toggleKey/resetError) — never linked.
+    FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
+#endif
 
     Instance *instance_;
     FactoryFor<OxpinyinState> factory_;
@@ -145,6 +158,21 @@ private:
 
     // Spell candidates bypass pinyin selection/training/constraints.
     void selectSpellCandidate(const std::string &word);
+
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+    // Inject the cloud row into a freshly built candidate list, when enabled
+    // and eligible (module present, unpinned fully-parsed full-pinyin buffer,
+    // not a password field). The reused CloudPinyinCandidateWord issues the
+    // async request in its ctor and self-fills; the slot is CloudPinyinIndex.
+    void maybeAddCloudCandidate(CommonCandidateList &list);
+
+    // Cloud-candidate select: the engine-independent workaround. Commits the
+    // cloud hanzi directly and resets — NEVER pinyin_choose_candidate, train,
+    // constraints, or user-input learning, so the engine's selection/
+    // constraint contract is untouched. `selected` is the already-committed
+    // prefix (empty here: cloud fires only on an unpinned full buffer).
+    void cloudSelected(const std::string &selected, const std::string &word);
+#endif
 
     std::string sentence() const;
     // Active-scheme aux text (full/double/chewing variant), cursor marker

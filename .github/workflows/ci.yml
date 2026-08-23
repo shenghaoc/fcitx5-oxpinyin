@@ -63,3 +63,43 @@ jobs:
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
           cmake --build build
           ctest --test-dir build --output-on-failure
+
+  check-cloudpinyin:
+    name: Build and test (cloudpinyin ON)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cxx_compiler: g++
+          - compiler: clang
+            cxx_compiler: clang++
+    env:
+      CC: ${{ matrix.compiler }}
+      CXX: ${{ matrix.cxx_compiler }}
+    steps:
+      - name: Install dependencies
+        run: |
+          # ENABLE_CLOUDPINYIN needs the cloudpinyin module's public header and
+          # its Fcitx5::Module::CloudPinyin cmake config, plus the runtime
+          # module for the harness. All ship in fcitx5-chinese-addons. The
+          # header-free baseline is covered by the `check` job above.
+          pacman -Syu --noconfirm base-devel clang cmake ninja git \
+            extra-cmake-modules fmt libuv boost \
+            libpinyin fcitx5 fcitx5-chinese-addons
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_CLOUDPINYIN=ON \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build
+          ctest --test-dir build --output-on-failure

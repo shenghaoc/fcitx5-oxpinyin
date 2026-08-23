@@ -76,6 +76,18 @@ FCITX_CONFIGURATION(
                               false};
     Option<bool> spellEnabled{this, "SpellEnabled",
                               _("Show English candidates"), true};
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+    // Cloud Pinyin (optional, delegated to chinese-addons' cloudpinyin module).
+    // Defaults mirror fcitx5-chinese-addons: off by default; when on, the
+    // cloud row lands at the 1-based CloudPinyinIndex slot. These options
+    // exist ONLY in the ENABLE_CLOUDPINYIN build — the self-contained build
+    // has no cloud config, keeping it byte-for-byte the baseline.
+    Option<bool> cloudPinyinEnabled{this, "CloudPinyinEnabled",
+                                    _("Enable Cloud Pinyin"), false};
+    Option<int, IntConstrain> cloudPinyinIndex{
+        this, "CloudPinyinIndex", _("Cloud Pinyin Candidate Order"), 2,
+        IntConstrain(1, 10)};
+#endif
     // No full-width config option: full-width is a delegated toggle owned by
     // the optional `fullwidth` module (its own status-area Action + hotkey),
     // wired in activate() alongside chttrans. The module's CommitFilter fires

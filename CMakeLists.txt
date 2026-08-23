@@ -40,6 +40,17 @@ set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
 
 option(ENABLE_TEST "Build test" ON)
 
+# Optional Cloud Pinyin via fcitx5-chinese-addons' cloudpinyin module.
+# ON pulls in that module's public header (needs fcitx5-chinese-addons dev
+# files at build) and compiles the cloud request/inject/direct-commit path.
+# OFF (the default) keeps the addon header-free and self-contained: no
+# chinese-addons dependency, byte-for-byte the baseline build.
+option(ENABLE_CLOUDPINYIN
+       "Optional Cloud Pinyin via chinese-addons' cloudpinyin module" OFF)
+if (ENABLE_CLOUDPINYIN)
+    find_package(Fcitx5Module REQUIRED COMPONENTS CloudPinyin)
+endif ()
+
 # Sanitizer builds link the ASan/UBSan runtime into the test executable, so
 # the addon module must be allowed to reference it: strip the
 # -Wl,--no-undefined that Fcitx5CompilerSettings adds.
