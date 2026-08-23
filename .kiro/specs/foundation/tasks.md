@@ -49,8 +49,10 @@
       (raw buffer fallback); Backspace edits + re-parses; Escape resets
       (pinyin_reset).
 - [x] Selection: choose_candidate(0, cand); whole-buffer -> sentence +
-      train(0) + remember_user_input; partial -> commit candidate text
-      (Phase 4 branch documented in-code). pinyin_save on deactivate.
+      train(0) + remember_user_input; partial -> committed the candidate's
+      own text (Phase-2-era behavior, superseded in Phase 4 by pin-and-
+      keep-composing, which replaced the in-code hook). pinyin_save on
+      deactivate.
 - [x] Harness: nihao preedit+candidates+commit expectation; backspace;
       escape; Ctrl-combo passthrough mid-composition; digit selection;
       paging. Ownership: candidate strings borrowed-copy, sentence
