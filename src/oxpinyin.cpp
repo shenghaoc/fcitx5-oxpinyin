@@ -384,12 +384,19 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             return;
         }
         auto committed = sentence();
-        if (committed.empty()) {
+        const bool fromSentence = !committed.empty();
+        if (!fromSentence) {
             committed = buffer_;
         } else if (parsedLen_ < buffer_.size()) {
             committed += buffer_.substr(parsedLen_);
         }
         ic_->commitString(committed);
+        if (fromSentence) {
+            // Train the decoded commit; a raw-buffer passthrough carries
+            // nothing to train.
+            pinyin_train(instance_.get(), 0);
+            pinyin_remember_user_input(instance_.get(), committed.c_str(), -1);
+        }
         keyEvent.filterAndAccept();
         resetState();
         return;
