@@ -71,8 +71,9 @@ FCITX_CONFIGURATION(
                               false};
     Option<bool> correctUenUn{this, "CorrectUenUn", _("Correct uen to un"),
                               false};
-    Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"),
-                             false};);
+    Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
+    Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
+                              false};);
 
 } // namespace fcitx
 
