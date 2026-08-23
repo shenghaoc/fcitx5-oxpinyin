@@ -158,8 +158,14 @@ bool EnglishDatabase::open(const std::string &systemDb,
     userDb_ = userDb;
 
     /* do database attach here. :) */
-    if (sqlite3_open_v2(systemDb.c_str(), &sqlite_,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+    // Divergence from upstream: CREATE is dropped because the system word
+    // list is a shared installed resource already verified above — never
+    // fabricate a file at that path.  Upstream's flags are otherwise kept:
+    // SQLITE_OPEN_READONLY is NOT usable here because SQLite makes every
+    // attached schema unwritable on a READONLY connection (both the
+    // backup API and plain SQL fail with SQLITE_READONLY), and this class
+    // attaches the in-memory userdb to this very connection.
+    if (sqlite3_open_v2(systemDb.c_str(), &sqlite_, SQLITE_OPEN_READWRITE,
                         nullptr) != SQLITE_OK) {
         sqlite3_close(sqlite_);
         sqlite_ = nullptr;
