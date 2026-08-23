@@ -123,11 +123,15 @@ jobs:
         run: |
           if command -v pacman >/dev/null; then
             pacman -Syu --noconfirm base-devel clang cmake ninja git \
-              extra-cmake-modules fmt libuv boost rust fcitx5-chinese-addons
+              extra-cmake-modules fmt libuv boost rust cargo-c \
+              fcitx5-chinese-addons
           else
             dnf install -y gcc-c++ clang cmake ninja-build git \
-              extra-cmake-modules fmt-devel libuv-devel boost-devel rust cargo \
-              fcitx5-chinese-addons
+              extra-cmake-modules fmt-devel libuv-devel libuuid-devel \
+              zlib-devel gettext boost-devel rust cargo fcitx5-chinese-addons
+            # Fedora does not package cargo-c; install the cargo subcommand
+            # into $CARGO_HOME/bin where cargo finds subcommands itself.
+            cargo install cargo-c --locked
           fi
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
@@ -195,7 +199,8 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
-            extra-cmake-modules fmt libuv boost rust fcitx5-chinese-addons
+            extra-cmake-modules fmt libuv boost rust cargo-c \
+            fcitx5-chinese-addons
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
       - name: Checkout fcitx5
