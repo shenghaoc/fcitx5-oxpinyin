@@ -85,8 +85,7 @@ Aux-text preedit, client-vs-panel, FCITX_CONFIGURATION (page size, scheme,
 fuzzy) → set_options/scheme setters; harness tests for scheme switch +
 zhuyin case.
 
-## Phase 4 — partial-choice / constrained re-decode (IN PROGRESS — local
-## gates green, PR CI pending)
+## Phase 4 — partial-choice / constrained re-decode (IN PROGRESS — local gates green, PR CI pending)
 
 - [x] Contract verified from pinyin.h + impl: choose_candidate's return is
       the candidate's absolute end in the raw-input coordinates of the
