@@ -5,11 +5,14 @@
 #include "oxpinyin.h"
 #include "oxpinyin_paths.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <utility>
 
+#include <fcitx-config/iniparser.h>
+#include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
@@ -33,8 +36,52 @@ namespace fcitx {
 
 namespace {
 
-// Phase 2 constant; Phase 3 moves page size into FCITX_CONFIGURATION.
-constexpr int kPageSize = 5;
+constexpr auto kConfigFile = "conf/oxpinyin.conf";
+
+// Scheme mapping onto the capi enums (pinyin.h values only).
+int doublePinyinValue(OxpinyinInputScheme scheme) {
+    switch (scheme) {
+    case OxpinyinInputScheme::DoublePinyinZRM:
+        return DOUBLE_PINYIN_ZRM;
+    case OxpinyinInputScheme::DoublePinyinMS:
+        return DOUBLE_PINYIN_MS;
+    case OxpinyinInputScheme::DoublePinyinZiguang:
+        return DOUBLE_PINYIN_ZIGUANG;
+    case OxpinyinInputScheme::DoublePinyinABC:
+        return DOUBLE_PINYIN_ABC;
+    case OxpinyinInputScheme::DoublePinyinPYJJ:
+        return DOUBLE_PINYIN_PYJJ;
+    case OxpinyinInputScheme::DoublePinyinXiaohe:
+        return DOUBLE_PINYIN_XHE;
+    default:
+        return -1;
+    }
+}
+
+int zhuyinValue(OxpinyinInputScheme scheme) {
+    switch (scheme) {
+    case OxpinyinInputScheme::ZhuyinStandard:
+        return ZHUYIN_STANDARD;
+    case OxpinyinInputScheme::ZhuyinHsu:
+        return ZHUYIN_HSU;
+    case OxpinyinInputScheme::ZhuyinIBM:
+        return ZHUYIN_IBM;
+    case OxpinyinInputScheme::ZhuyinGinYieh:
+        return ZHUYIN_GINYIEH;
+    case OxpinyinInputScheme::ZhuyinEten:
+        return ZHUYIN_ETEN;
+    case OxpinyinInputScheme::ZhuyinEten26:
+        return ZHUYIN_ETEN26;
+    case OxpinyinInputScheme::ZhuyinStandardDvorak:
+        return ZHUYIN_STANDARD_DVORAK;
+    case OxpinyinInputScheme::ZhuyinHsuDvorak:
+        return ZHUYIN_HSU_DVORAK;
+    case OxpinyinInputScheme::ZhuyinDachenCP26:
+        return ZHUYIN_DACHEN_CP26;
+    default:
+        return -1;
+    }
+}
 
 std::pair<std::filesystem::path, std::filesystem::path> resolveDataDirs() {
     // System dir: env override first (keeps the harness and CI off any real
@@ -140,6 +187,7 @@ OxpinyinEngine::OxpinyinEngine(Instance *instance)
 
     instance_->inputContextManager().registerProperty("oxpinyinstate",
                                                       &factory_);
+    reloadConfig();
 }
 
 OxpinyinEngine::~OxpinyinEngine() = default;
@@ -177,6 +225,98 @@ void OxpinyinEngine::save() {
     }
 }
 
+void OxpinyinEngine::reloadConfig() {
+    readAsIni(config_, kConfigFile);
+    applyConfig();
+}
+
+void OxpinyinEngine::setConfig(const RawConfig &config) {
+    config_.load(config, true);
+    safeSaveAsIni(config_, kConfigFile);
+    applyConfig();
+}
+
+void OxpinyinEngine::applyConfig() {
+    if (!context_) {
+        return;
+    }
+
+    pinyin_option_t bits =
+        DYNAMIC_ADJUST | USE_DIVIDED_TABLE | USE_RESPLIT_TABLE;
+    if (*config_.incomplete) {
+        // One toggle drives both parse modes' shorthand bits.
+        bits |= PINYIN_INCOMPLETE | ZHUYIN_INCOMPLETE;
+    }
+    if (*config_.fuzzyCCh) {
+        bits |= PINYIN_AMB_C_CH;
+    }
+    if (*config_.fuzzySSh) {
+        bits |= PINYIN_AMB_S_SH;
+    }
+    if (*config_.fuzzyZZh) {
+        bits |= PINYIN_AMB_Z_ZH;
+    }
+    if (*config_.fuzzyFH) {
+        bits |= PINYIN_AMB_F_H;
+    }
+    if (*config_.fuzzyGK) {
+        bits |= PINYIN_AMB_G_K;
+    }
+    if (*config_.fuzzyLN) {
+        bits |= PINYIN_AMB_L_N;
+    }
+    if (*config_.fuzzyLR) {
+        bits |= PINYIN_AMB_L_R;
+    }
+    if (*config_.fuzzyAnAng) {
+        bits |= PINYIN_AMB_AN_ANG;
+    }
+    if (*config_.fuzzyEnEng) {
+        bits |= PINYIN_AMB_EN_ENG;
+    }
+    if (*config_.fuzzyInIng) {
+        bits |= PINYIN_AMB_IN_ING;
+    }
+    if (*config_.correctGnNg) {
+        bits |= PINYIN_CORRECT_GN_NG;
+    }
+    if (*config_.correctMgNg) {
+        bits |= PINYIN_CORRECT_MG_NG;
+    }
+    if (*config_.correctIouIu) {
+        bits |= PINYIN_CORRECT_IOU_IU;
+    }
+    if (*config_.correctUeiUi) {
+        bits |= PINYIN_CORRECT_UEI_UI;
+    }
+    if (*config_.correctUenUn) {
+        bits |= PINYIN_CORRECT_UEN_UN;
+    }
+    if (*config_.correctUeVe) {
+        bits |= PINYIN_CORRECT_UE_VE;
+    }
+    pinyin_set_options(context_.get(), bits);
+
+    const auto scheme = *config_.inputScheme;
+    if (const auto value = doublePinyinValue(scheme); value > 0) {
+        pinyin_set_double_pinyin_scheme(context_.get(), value);
+    } else if (const auto value = zhuyinValue(scheme); value > 0) {
+        pinyin_set_zhuyin_scheme(context_.get(), value);
+    }
+
+    if (scheme != lastAppliedScheme_) {
+        // The parse mode changed: drop every live composition rather than
+        // re-decode a buffer typed under the previous scheme.
+        if (factory_.registered()) {
+            instance_->inputContextManager().foreach([this](InputContext *ic) {
+                state(ic)->resetState();
+                return true;
+            });
+        }
+        lastAppliedScheme_ = scheme;
+    }
+}
+
 /*******************************************************************************
  * OxpinyinState
  ******************************************************************************/
@@ -209,13 +349,17 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
 
     if (key.isSimple()) {
         const auto c = static_cast<char>(key.sym() & 0xff);
-        if ((c >= 'a' && c <= 'z') || c == '\'') {
+        if (acceptChar(c)) {
             buffer_.push_back(c);
-            parsedLen_ = pinyin_parse_more_full_pinyins(instance_.get(),
-                                                        buffer_.c_str());
-            if (buffer_.size() == 1 &&
+            parsedLen_ = parseBuffer();
+            // Zhuyin keeps any in-keyboard key composing (a lone initial
+            // parses to nothing yet but belongs to the syllable being
+            // built); for the pinyin modes a first key that parses to
+            // nothing is passed through un-swallowed.
+            const auto zhuyin =
+                zhuyinValue(engine_->config().inputScheme.value()) > 0;
+            if (!zhuyin && buffer_.size() == 1 &&
                 pinyin_get_parsed_input_length(instance_.get()) == 0) {
-                // First key is not parseable pinyin: don't swallow it.
                 resetState();
                 return;
             }
@@ -223,7 +367,7 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             updateUI();
             return;
         }
-        return; // digits and other simple keys pass through in v1
+        return; // other simple keys pass through in v1
     }
 
     if (key.check(FcitxKey_space)) {
@@ -261,8 +405,7 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             resetState();
             return;
         }
-        parsedLen_ =
-            pinyin_parse_more_full_pinyins(instance_.get(), buffer_.c_str());
+        parsedLen_ = parseBuffer();
         keyEvent.filterAndAccept();
         updateUI();
         return;
@@ -356,6 +499,76 @@ std::string OxpinyinState::sentence() const {
     return ownedString(s);
 }
 
+size_t OxpinyinState::parseBuffer() const {
+    switch (engine_->config().inputScheme.value()) {
+    case OxpinyinInputScheme::DoublePinyinZRM:
+    case OxpinyinInputScheme::DoublePinyinMS:
+    case OxpinyinInputScheme::DoublePinyinZiguang:
+    case OxpinyinInputScheme::DoublePinyinABC:
+    case OxpinyinInputScheme::DoublePinyinPYJJ:
+    case OxpinyinInputScheme::DoublePinyinXiaohe:
+        return pinyin_parse_more_double_pinyins(instance_.get(),
+                                                buffer_.c_str());
+    case OxpinyinInputScheme::ZhuyinStandard:
+    case OxpinyinInputScheme::ZhuyinHsu:
+    case OxpinyinInputScheme::ZhuyinIBM:
+    case OxpinyinInputScheme::ZhuyinGinYieh:
+    case OxpinyinInputScheme::ZhuyinEten:
+    case OxpinyinInputScheme::ZhuyinEten26:
+    case OxpinyinInputScheme::ZhuyinStandardDvorak:
+    case OxpinyinInputScheme::ZhuyinHsuDvorak:
+    case OxpinyinInputScheme::ZhuyinDachenCP26:
+        return pinyin_parse_more_chewings(instance_.get(), buffer_.c_str());
+    default:
+        return pinyin_parse_more_full_pinyins(instance_.get(), buffer_.c_str());
+    }
+}
+
+bool OxpinyinState::acceptChar(char c) const {
+    using S = OxpinyinInputScheme;
+    switch (engine_->config().inputScheme.value()) {
+    case S::DoublePinyinZRM:
+    case S::DoublePinyinMS:
+    case S::DoublePinyinZiguang:
+    case S::DoublePinyinABC:
+    case S::DoublePinyinPYJJ:
+    case S::DoublePinyinXiaohe:
+        return (c >= 'a' && c <= 'z') || c == ';';
+    case S::ZhuyinStandard:
+    case S::ZhuyinHsu:
+    case S::ZhuyinIBM:
+    case S::ZhuyinGinYieh:
+    case S::ZhuyinEten:
+    case S::ZhuyinEten26:
+    case S::ZhuyinStandardDvorak:
+    case S::ZhuyinHsuDvorak:
+    case S::ZhuyinDachenCP26:
+        // The engine knows the active layout's key table.
+        return pinyin_in_chewing_keyboard(instance_.get(), c, nullptr);
+    default:
+        return (c >= 'a' && c <= 'z') || c == '\'';
+    }
+}
+
+std::string OxpinyinState::auxText() const {
+    char *a = nullptr;
+    const auto scheme = engine_->config().inputScheme.value();
+    using S = OxpinyinInputScheme;
+    if (scheme == S::FullPinyin) {
+        pinyin_get_full_pinyin_auxiliary_text(instance_.get(), parsedLen_, &a);
+    } else if (doublePinyinValue(scheme) > 0) {
+        pinyin_get_double_pinyin_auxiliary_text(instance_.get(), parsedLen_,
+                                                &a);
+    } else {
+        pinyin_get_chewing_auxiliary_text(instance_.get(), parsedLen_, &a);
+    }
+    auto text = ownedString(a);
+    // The cursor marker positions the caret in the raw input; the client
+    // cursor is pinned at 0 by design, so drop it from the display text.
+    text.erase(std::remove(text.begin(), text.end(), '|'), text.end());
+    return text;
+}
+
 void OxpinyinState::updateUI() {
     auto &panel = ic_->inputPanel();
     panel.reset();
@@ -366,20 +579,45 @@ void OxpinyinState::updateUI() {
     }
 
     pinyin_guess_sentence(instance_.get());
-    auto text = sentence();
-    Text preedit;
-    if (!text.empty()) {
-        preedit.append(text, TextFormatFlag::Underline);
-        if (parsedLen_ < buffer_.size()) {
-            preedit.append(buffer_.substr(parsedLen_),
-                           TextFormatFlag::Underline);
+    const auto converted = sentence();
+    const auto aux = auxText();
+
+    if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
+        // Wiki guidance: the client cursor stays pinned at 0 (the
+        // candidate window doesn't jitter while typing) and the composing
+        // region carries the highlight.
+        Text preedit;
+        preedit.setCursor(0);
+        if (!converted.empty()) {
+            preedit.append(converted, TextFormatFlag::Underline);
         }
+        if (!aux.empty()) {
+            preedit.append(aux, TextFormatFlags{TextFormatFlag::Underline,
+                                                TextFormatFlag::HighLight});
+        }
+        if (preedit.empty()) {
+            preedit.append(buffer_, TextFormatFlag::Underline);
+        }
+        panel.setClientPreedit(preedit);
+        ic_->updatePreedit();
     } else {
-        preedit.append(buffer_, TextFormatFlag::Underline);
+        // Panel fallback: the preedit carries what a commit would produce;
+        // the typed syllables sit below it.
+        Text preedit;
+        if (!converted.empty()) {
+            preedit.append(converted, TextFormatFlag::Underline);
+            if (parsedLen_ < buffer_.size()) {
+                preedit.append(buffer_.substr(parsedLen_),
+                               TextFormatFlag::Underline);
+            }
+        } else {
+            preedit.append(buffer_, TextFormatFlag::Underline);
+        }
+        panel.setPreedit(preedit);
+        if (!aux.empty()) {
+            panel.setAuxDown(Text(aux));
+        }
     }
-    // Panel preedit in Phase 2; Phase 3 moves to client preedit (cursor at
-    // 0 + highlight) with the aux-text getters feeding the pinyin part.
-    panel.setPreedit(preedit);
 
     if (parsedLen_ > 0) {
         pinyin_guess_candidates(instance_.get(), 0, 0);
@@ -387,7 +625,7 @@ void OxpinyinState::updateUI() {
         if (pinyin_get_n_candidate(instance_.get(), &count) && count > 0) {
             auto list = std::make_unique<CommonCandidateList>();
             list->setSelectionKey(selectionKeys());
-            list->setPageSize(kPageSize);
+            list->setPageSize(*engine_->config().pageSize);
             for (guint i = 0; i < count; ++i) {
                 lookup_candidate_t *candidate = nullptr;
                 if (!pinyin_get_candidate(instance_.get(), i, &candidate) ||

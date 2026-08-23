@@ -5,6 +5,8 @@
 #ifndef FCITX5_OXPINYIN_OXPINYIN_H_
 #define FCITX5_OXPINYIN_OXPINYIN_H_
 
+#include "oxpinyinconfig.h"
+
 #include <fcitx-config/rawconfig.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
@@ -36,6 +38,10 @@ public:
     void reset(const InputMethodEntry &entry,
                InputContextEvent &event) override;
     void save() override;
+    void reloadConfig() override;
+
+    const Configuration *getConfig() const override { return &config_; }
+    void setConfig(const RawConfig &config) override;
 
     bool isEngineReady() const { return context_ != nullptr; }
 
@@ -45,9 +51,20 @@ public:
         return ic->propertyFor(&factory_);
     }
 
+    const OxpinyinConfig &config() const { return config_; }
+
 private:
+    friend class OxpinyinState;
+
+    // Options bits + scheme setters from the current config; resets active
+    // instances when the scheme changes (a buffer typed under one scheme is
+    // never re-decoded under another).
+    void applyConfig();
+
     Instance *instance_;
     FactoryFor<OxpinyinState> factory_;
+    OxpinyinConfig config_;
+    OxpinyinInputScheme lastAppliedScheme_ = OxpinyinInputScheme::FullPinyin;
     std::unique_ptr<pinyin_context_t, decltype(&pinyin_fini)> context_;
 };
 
@@ -77,6 +94,7 @@ public:
 
 private:
     friend class OxpinyinCandidateWord;
+    friend class OxpinyinEngine;
 
     // Candidate-list interaction while composing; true when consumed.
     bool handleCandidateKey(KeyEvent &keyEvent);
@@ -87,6 +105,13 @@ private:
     void selectCandidate(size_t index);
 
     std::string sentence() const;
+    // Active-scheme aux text (full/double/chewing variant), cursor marker
+    // stripped.
+    std::string auxText() const;
+
+    // Dispatch on the configured scheme.
+    size_t parseBuffer() const;
+    bool acceptChar(char c) const;
 
     void updateUI();
     void resetState();
@@ -95,8 +120,8 @@ private:
         instance_;
     InputContext *ic_;
     OxpinyinEngine *engine_;
-    std::string buffer_;   // raw pinyin keys, engine-neutral
-    size_t parsedLen_ = 0; // bytes the engine accepted as pinyin
+    std::string buffer_;   // raw keys, scheme-dependent
+    size_t parsedLen_ = 0; // bytes the engine accepted
 };
 
 class OxpinyinEngineFactory final : public AddonFactory {

@@ -5,6 +5,7 @@ Category=InputMethod
 Version=@PROJECT_VERSION@
 Type=SharedLibrary
 OnDemand=True
+Configurable=True
 Library=oxpinyin
 
 [Addon/Dependencies]
