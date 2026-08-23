@@ -419,6 +419,74 @@ void testSpellCandidates(Instance *instance) {
         instance->deactivate();
     });
 }
+
+// Regression: Space must select the first DISPLAYED candidate (the digit
+// path), not pinyin-engine candidate 0 — uppercase input puts a Spell word
+// in slot 0, where the engine index would commit the wrong word or nothing.
+void testSpellSpaceSelection(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Spell-first list (uppercase): Space commits the slot-0 spell word
+        // and clears the panel.
+        for (const auto c : std::string("Helo")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto spellFirst = ic->inputPanel().candidateList();
+        FCITX_ASSERT(spellFirst && !spellFirst->empty());
+        const auto spellWord = spellFirst->candidate(0).text().toString();
+        FCITX_ASSERT(
+            std::all_of(spellWord.begin(), spellWord.end(), [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            }));
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(spellWord);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        // Mixed list (lower case): spell sits at slot 1; Space still targets
+        // displayed slot 0, the pinyin first choice.
+        for (const auto c : std::string("rhythm")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto mixed = ic->inputPanel().candidateList();
+        FCITX_ASSERT(mixed && mixed->size() > 1);
+        FCITX_ASSERT(mixed->candidate(1).text().toString() == "rhythm");
+        const auto mixedFirst = mixed->candidate(0).text().toString();
+        FCITX_ASSERT(mixedFirst != "rhythm");
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(mixedFirst);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        // Whether Space committed or left a pinned composition, reset before
+        // the next scenario.
+        testfrontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("Escape"),
+                                                        false);
+
+        // The pinyin Space path is unchanged: full-pinyin input commits its
+        // first candidate.
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto pinyin = ic->inputPanel().candidateList();
+        FCITX_ASSERT(pinyin && !pinyin->empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            pinyin->candidate(0).text().toString());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+    });
+}
 #else
 void testSpellUnavailable(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
@@ -1104,6 +1172,7 @@ int main() {
     testConfigApply(&instance);
 #ifndef OXPINYIN_TEST_NO_SPELL
     testSpellCandidates(&instance);
+    testSpellSpaceSelection(&instance);
 #else
     testSpellUnavailable(&instance);
 #endif
