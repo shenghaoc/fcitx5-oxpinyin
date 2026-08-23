@@ -133,7 +133,7 @@ jobs:
           else
             dnf install -y gcc-c++ clang cmake ninja-build git \
               extra-cmake-modules fmt-devel libuv-devel libuuid-devel \
-              zlib-devel gettext boost-devel rust cargo rust-cargo-c \
+              zlib-devel gettext boost-devel rust cargo cargo-c \
               fcitx5-devel fcitx5-chinese-addons
           fi
           git config --global --add safe.directory $GITHUB_WORKSPACE
