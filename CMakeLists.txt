@@ -9,21 +9,34 @@ find_package(Fcitx5Core ${REQUIRED_FCITX_VERSION} REQUIRED)
 find_package(Fcitx5Utils REQUIRED)
 find_package(Fcitx5Module REQUIRED COMPONENTS TestFrontend)
 
-pkg_check_modules(OXPINYIN REQUIRED IMPORTED_TARGET oxpinyin)
+set(ENGINE "libpinyin" CACHE STRING "Engine backend (libpinyin or oxpinyin)")
+set_property(CACHE ENGINE PROPERTY STRINGS libpinyin oxpinyin)
+if(NOT ENGINE MATCHES "^(libpinyin|oxpinyin)$")
+    message(FATAL_ERROR "ENGINE must be libpinyin or oxpinyin, got '${ENGINE}'")
+endif()
+
+if(ENGINE STREQUAL "oxpinyin")
+    pkg_check_modules(ENGINE_PKG REQUIRED IMPORTED_TARGET oxpinyin)
+else()
+    pkg_check_modules(ENGINE_PKG REQUIRED IMPORTED_TARGET libpinyin)
+endif()
 
 include(GNUInstallDirs)
 include(FeatureSummary)
 
+if(ENGINE STREQUAL "oxpinyin")
+    set(ENGINE_SYSTEM_DATA_DIR "${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin")
+else()
+    pkg_get_variable(_LIBPINYIN_PKGDATADIR libpinyin pkgdatadir)
+    set(ENGINE_SYSTEM_DATA_DIR "${_LIBPINYIN_PKGDATADIR}/data")
+endif()
+
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
-# fcitx5's own floor is C++17; this shell is C++20 (complete on every
-# target, incl. Ubuntu 24.04 GCC 13). C++23 is not required.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Let build-tree test binaries find libpinyin_capi.so when the engine is
-# installed to a pkg-config prefix outside the default loader path.
-set(CMAKE_BUILD_RPATH "${OXPINYIN_LIBRARY_DIRS}")
+set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
 
 option(ENABLE_TEST "Build test" ON)
 
@@ -61,11 +74,11 @@ set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CPACK_PACKAGE_CONTACT "Shenghao Chen <shenghaoc@outlook.com>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "Pinyin input method for fcitx5, powered by the oxpinyin engine")
+    "Pinyin input method for fcitx5, powered by the ${ENGINE} engine")
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, oxpinyin")
-set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, oxpinyin")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, ${ENGINE}")
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, ${ENGINE}")
 include(CPack)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

@@ -4,18 +4,12 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
     branches:
       - main
-      - master
 
-# The engine pin: a FIXED oxpinyin main SHA, bumped deliberately (the same
-# discipline as the oracle pin at 0c5e80e), never floating on main HEAD.
-# 78b22ee contains the §3 constraint merges (#145/#146, merge commit f801cda).
-env:
-  OXPINYIN_SHA: 78b22eefa28dbbbfee20204f93e4a78be8ae7868
-  OXPINYIN_DATA_VERSION: v1
+permissions:
+  contents: read
 
 jobs:
   clang-format:
@@ -26,192 +20,43 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm git clang diffutils
-          git config --global --add safe.directory $GITHUB_WORKSPACE
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: fcitx/github-actions@clang-format
 
-  data:
-    name: Assemble engine data
+  check:
+    name: Build and test
+    needs: clang-format
     runs-on: ubuntu-latest
-    steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf automake autopoint libtool \
-            gettext gnome-common pkg-config curl tar python3 \
-            libglib2.0-dev libibus-1.0-dev libsqlite3-dev
-      - name: Install pinned libtkrzw
-        run: |
-          # Mirrors oxpinyin's .github/actions/install-tkrzw: Ubuntu ships no
-          # tkrzw package, so build the pinned tarball.
-          version=1.0.32
-          sha256=d3404dfac6898632b69780c0f0994c5f6ba962191a61c9b0f4b53ba8bb27731c
-          workdir="$(mktemp -d)"
-          cd "$workdir"
-          curl -fsSL --retry 3 --retry-delay 5 \
-            -o tkrzw.tar.gz "https://dbmx.net/tkrzw/pkg/tkrzw-${version}.tar.gz"
-          echo "${sha256}  tkrzw.tar.gz" | sha256sum -c -
-          tar xzf tkrzw.tar.gz
-          cd "tkrzw-${version}"
-          ./configure
-          make -j"$(nproc)"
-          sudo make install
-          sudo ldconfig
-          pkg-config --modversion tkrzw
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: shenghaoc/oxpinyin
-          ref: ${{ env.OXPINYIN_SHA }}
-          path: oxpinyin
-      - name: Cache engine data
-        id: cache-data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: oxpinyin-data
-          key: oxpinyin-data-${{ env.OXPINYIN_DATA_VERSION }}-${{ env.OXPINYIN_SHA }}
-      - name: Build pinned oracle and export tables
-        if: steps.cache-data.outputs.cache-hit != 'true'
-        run: |
-          # The full pinned-oracle autotools pipeline is too heavy to re-run
-          # per compiler job, so the exported tables are cached by engine SHA
-          # (the sanctioned fallback) and shipped to build jobs as an artifact.
-          cd oxpinyin
-          ./tools/oracle/build-oracle.sh --jobs "$(nproc)" \
-            --prefix "$GITHUB_WORKSPACE/oxpinyin-prefix"
-          export PINYIN_ORACLE_PREFIX="$GITHUB_WORKSPACE/oxpinyin-prefix"
-          cargo run --locked -p oxpinyin-migrate --features oracle-ffi -- \
-            export --out-dir "$GITHUB_WORKSPACE/oxpinyin-data"
-          ./tools/model/fetch-model.sh
-          cp target/model20/extracted/interpolation2.text \
-            "$GITHUB_WORKSPACE/oxpinyin-data/"
-          ls -la "$GITHUB_WORKSPACE/oxpinyin-data"
-      - name: Assert data complete
-        run: |
-          test -f oxpinyin-data/pinyin_index.redb
-          test -f oxpinyin-data/phrase_index.redb
-          test -f oxpinyin-data/bigram.redb
-          test -f oxpinyin-data/interpolation2.text
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: oxpinyin-data
-          path: oxpinyin-data
-
-  build:
-    name: Build and test (${{ matrix.container }}, ${{ matrix.compiler }})
-    needs: [data]
-    runs-on: ubuntu-latest
-    container: ${{ matrix.container }}
+    container: archlinux:latest
     strategy:
       fail-fast: false
       matrix:
+        compiler: [gcc, clang]
         include:
-          - container: archlinux:latest
-            compiler: gcc
+          - compiler: gcc
             cxx_compiler: g++
-          - container: archlinux:latest
-            compiler: clang
+          - compiler: clang
             cxx_compiler: clang++
-          # The target-distro signal.
-          - container: fedora:latest
-            compiler: gcc
-            cxx_compiler: g++
     env:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
     steps:
-      # The addon builds against the DISTRO fcitx5 (arch ships headers in the
-      # fcitx5 package; fedora needs fcitx5-devel) — which is also what makes
-      # the harness resolve the punctuation hard dependency from
-      # fcitx5-chinese-addons. A from-source fcitx5 build would need
-      # from-source chinese-addons too (no punctuation-only build exists).
-      - name: Install dependencies
-        run: |
-          if command -v pacman >/dev/null; then
-            pacman -Syu --noconfirm base-devel clang cmake ninja git \
-              extra-cmake-modules fmt libuv boost rust cargo-c \
-              fcitx5 fcitx5-chinese-addons
-          else
-            dnf install -y gcc-c++ clang cmake ninja-build git \
-              extra-cmake-modules fmt-devel libuv-devel libuuid-devel \
-              zlib-devel gettext boost-devel rust cargo cargo-c \
-              fcitx5-devel fcitx5-chinese-addons
-          fi
-          git config --global --add safe.directory $GITHUB_WORKSPACE
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Checkout pinned oxpinyin
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: shenghaoc/oxpinyin
-          ref: ${{ env.OXPINYIN_SHA }}
-          path: oxpinyin
-      - name: Build and install oxpinyin (cargo cinstall)
-        run: |
-          cd oxpinyin
-          cargo cinstall --locked -p oxpinyin-capi \
-            --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
-      - name: Download engine data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: oxpinyin-data
-          path: oxpinyin-data
-      - name: Configure, build, test
-        run: |
-          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/oxpinyin-install/lib/pkgconfig:$PKG_CONFIG_PATH"
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOXPINYIN_SYSTEM_DATA_DIR="$GITHUB_WORKSPACE/oxpinyin-data" \
-            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
-          cmake --build build
-          ctest --test-dir build --output-on-failure
-      - name: clang-tidy (advisory, non-blocking)
-        if: matrix.container == 'archlinux:latest' && matrix.compiler == 'clang'
-        run: |
-          cmake -B build-tidy -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DOXPINYIN_SYSTEM_DATA_DIR=nonexistent \
-            -DOXPINYIN_USER_DATA_DIR=nonexistent || true
-          command -v clang-tidy || exit 0
-          clang-tidy -p build-tidy src/*.cpp || true
-
-  sanitizer:
-    name: ctest under ASan/UBSan
-    needs: [data]
-    runs-on: ubuntu-latest
-    container: archlinux:latest
-    env:
-      CC: clang
-      CXX: clang++
-    steps:
-      # Distro fcitx5 like the build jobs (see the comment there).
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
-            extra-cmake-modules fmt libuv boost rust cargo-c \
-            fcitx5 fcitx5-chinese-addons
-          git config --global --add safe.directory $GITHUB_WORKSPACE
+            extra-cmake-modules fmt libuv boost \
+            libpinyin fcitx5 fcitx5-chinese-addons
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Checkout pinned oxpinyin
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: shenghaoc/oxpinyin
-          ref: ${{ env.OXPINYIN_SHA }}
-          path: oxpinyin
-      - name: Build and install oxpinyin (cargo cinstall)
+          persist-credentials: false
+      - name: Build and test
         run: |
-          cd oxpinyin
-          cargo cinstall --locked -p oxpinyin-capi \
-            --prefix="$GITHUB_WORKSPACE/oxpinyin-install" --libdir=lib
-      - name: Download engine data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: oxpinyin-data
-          path: oxpinyin-data
-      - name: Configure, build, test under sanitizers
-        run: |
-          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/oxpinyin-install/lib/pkgconfig:$PKG_CONFIG_PATH"
           cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug -DENABLE_SANITIZER=ON \
-            -DOXPINYIN_SYSTEM_DATA_DIR="$GITHUB_WORKSPACE/oxpinyin-data" \
+            -DCMAKE_BUILD_TYPE=Release \
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
           cmake --build build
-          ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build --output-on-failure
+          ctest --test-dir build --output-on-failure

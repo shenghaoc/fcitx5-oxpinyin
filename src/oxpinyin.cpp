@@ -316,9 +316,11 @@ void OxpinyinEngine::applyConfig() {
 
     const auto scheme = *config_.inputScheme;
     if (const auto value = doublePinyinValue(scheme); value > 0) {
-        pinyin_set_double_pinyin_scheme(context_.get(), value);
+        pinyin_set_double_pinyin_scheme(context_.get(),
+                                        static_cast<DoublePinyinScheme>(value));
     } else if (const auto value = zhuyinValue(scheme); value > 0) {
-        pinyin_set_zhuyin_scheme(context_.get(), value);
+        pinyin_set_zhuyin_scheme(context_.get(),
+                                 static_cast<ZhuyinScheme>(value));
     }
 
     const bool schemeChanged = scheme != lastAppliedScheme_;
@@ -610,9 +612,20 @@ bool OxpinyinState::acceptChar(char c) const {
     case S::ZhuyinEten26:
     case S::ZhuyinStandardDvorak:
     case S::ZhuyinHsuDvorak:
-    case S::ZhuyinDachenCP26:
-        // The engine knows the active layout's key table.
-        return pinyin_in_chewing_keyboard(instance_.get(), c, nullptr);
+    case S::ZhuyinDachenCP26: {
+        // The engine knows the active layout's key table. The symbols
+        // out-parameter is dereferenced unconditionally, so it must point at
+        // real storage even though only the verdict is wanted here; the strv
+        // it hands back is ours to release.
+        gchar **symbols = nullptr;
+        const bool accepted =
+            pinyin_in_chewing_keyboard(instance_.get(), c, &symbols);
+        for (gchar **symbol = symbols; symbol && *symbol; ++symbol) {
+            std::free(*symbol);
+        }
+        std::free(symbols);
+        return accepted;
+    }
     default:
         return (c >= 'a' && c <= 'z') || c == '\'';
     }
@@ -697,18 +710,21 @@ bool OxpinyinState::handlePredictingKey(KeyEvent &keyEvent) {
 void OxpinyinState::enterPredicting(const std::string &committed) {
     // Called after resetState() has already cleaned the instance. Predict
     // on the clean post-reset instance so no stale pin/buffer bleeds.
+    // The panel is cleared up front: a chained prediction that comes back
+    // empty must not leave the previous list on screen, where it would be
+    // shown as selectable against an instance that no longer backs it.
+    auto &panel = ic_->inputPanel();
+    panel.reset();
+
     pinyin_guess_predicted_candidates_with_punctuations(instance_.get(),
                                                         committed.c_str());
     guint count = 0;
     if (!pinyin_get_n_candidate(instance_.get(), &count) || count == 0) {
+        ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
         return; // no predictions — stay idle
     }
     predicting_ = true;
     lastCommitted_ = committed;
-
-    // Build the prediction candidate list and show it.
-    auto &panel = ic_->inputPanel();
-    panel.reset();
 
     auto list = std::make_unique<CommonCandidateList>();
     list->setSelectionKey(selectionKeys());

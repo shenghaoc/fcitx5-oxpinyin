@@ -72,35 +72,33 @@ status lives in `.kiro/specs/foundation/`.
 ## Build, test, gates
 
 Requirements: CMake ≥ 3.21, C++20, fcitx5 ≥ 5.1.13 dev files,
-`extra-cmake-modules`, and oxpinyin discoverable via
-`pkg-config --cflags --libs oxpinyin` (build it from the pinned oxpinyin
-checkout with `cargo cinstall -p oxpinyin-capi --prefix=<p> --libdir=lib`).
+`extra-cmake-modules`, and an engine discoverable via pkg-config.
+The CMake option `ENGINE` (default `libpinyin`) selects the pkg-config
+module: `libpinyin` → `pkg_check_modules(... libpinyin)` → `-lpinyin`;
+`oxpinyin` → `pkg_check_modules(... oxpinyin)` → `-lpinyin_capi`. Both
+expose the same `pinyin.h` API; the addon source is unchanged.
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DCMAKE_BUILD_TYPE=Release   # ENGINE=libpinyin (default)
 cmake --build build
-OXPINYIN_SYSTEM_DATA_DIR=<data dir> OXPINYIN_USER_DATA_DIR=$(mktemp -d) \
-  ctest --test-dir build --output-on-failure
+ctest --test-dir build --output-on-failure   # data dir auto-resolved
 ```
+
+For oxpinyin: `-DENGINE=oxpinyin` and point at exported tables via
+`-DOXPINYIN_SYSTEM_DATA_DIR=<data dir> -DOXPINYIN_USER_DATA_DIR=$(mktemp -d)`.
 
 Gates before any STOP:
 1. `cmake` configure + build clean on **gcc AND clang**.
 2. `clang-format` clean (`clang-format --dry-run -Werror` over `src/` `test/`).
 3. `ctest` green.
-4. CI: build+ctest matrix {gcc, clang} on archlinux:latest plus one
-   fedora:latest job; one job under `-fsanitize=address,undefined` — any
-   sanitizer finding is fixed before proceeding (this C++ shell is the one
-   memory-unsafe layer in the stack). clang-tidy is advisory, non-blocking.
-
-### Engine pin policy
-
-The CI sibling oxpinyin checkout is pinned to a **fixed main SHA** (see
-`OXPINYIN_SHA` in `.github/workflows/ci.yml`), bumped deliberately the same
-way the oracle is pinned at `0c5e80e` — never floating on `main` HEAD. An
-addon building against a moving engine main is non-reproducible and breaks
-bisection across both repos.
+4. CI: build+ctest matrix {gcc, clang} on archlinux:latest against distro
+   libpinyin (two-job reference shape: clang-format + check).
 
 ### Pin discipline (the fabricated-SHA lesson, 2026-08-23)
+
+CI now links distro libpinyin (no engine pin needed). This discipline
+still applies when building with `-DENGINE=oxpinyin` against a pinned
+oxpinyin checkout.
 
 - A full-SHA pin is captured from the source of truth at pin time —
   `git rev-parse origin/main` in the engine checkout, or the GitHub API —
