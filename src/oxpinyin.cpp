@@ -304,20 +304,24 @@ void OxpinyinEngine::applyConfig() {
         pinyin_set_zhuyin_scheme(context_.get(), value);
     }
 
-    if (scheme != lastAppliedScheme_) {
-        // The parse mode changed: drop every live composition rather than
-        // re-decode a buffer typed under the previous scheme.
-        if (factory_.registered()) {
-            instance_->inputContextManager().foreach([this](InputContext *ic) {
-                auto *st = state(ic);
-                if (st->composing() &&
-                    instance_->inputMethod(ic) == "oxpinyin") {
-                    st->resetState();
-                }
+    const bool schemeChanged = scheme != lastAppliedScheme_;
+    lastAppliedScheme_ = scheme;
+
+    if (factory_.registered()) {
+        instance_->inputContextManager().foreach([this, schemeChanged](
+                                                     InputContext *ic) {
+            auto *st = state(ic);
+            if (!st->composing() || instance_->inputMethod(ic) != "oxpinyin") {
                 return true;
-            });
-        }
-        lastAppliedScheme_ = scheme;
+            }
+            if (schemeChanged) {
+                // Never re-decode a buffer typed under another scheme.
+                st->resetState();
+            } else {
+                st->refresh();
+            }
+            return true;
+        });
     }
 }
 

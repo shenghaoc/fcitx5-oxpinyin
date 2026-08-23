@@ -92,6 +92,11 @@ public:
 
     bool composing() const { return !buffer_.empty(); }
 
+    void refresh() {
+        parsedLen_ = parseBuffer();
+        updateUI();
+    }
+
     pinyin_instance_t *instance() { return instance_.get(); }
 
 private:
