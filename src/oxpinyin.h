@@ -81,6 +81,12 @@ private:
  * generation. Backspacing into the chosen prefix clears the covering run
  * via pinyin_clear_constraint. All pinning stays engine-side — the shell
  * never derives spans or re-decodes under a pin itself.
+ *
+ * Phase 5: after a commit, if predictWords is enabled, the state enters
+ * Predicting: buffer_ empty, cursor_ 0, no pins — the candidate list
+ * holds predicted next-word candidates from the engine's bigram model.
+ * Selecting a prediction commits it and re-predicts (chain); typing a
+ * pinyin key leaves prediction and starts a fresh composition.
  */
 class OxpinyinState final : public InputContextProperty {
 public:
@@ -91,6 +97,7 @@ public:
     void reset();
 
     bool composing() const { return !buffer_.empty(); }
+    bool predicting() const { return predicting_; }
 
     void refresh() {
         parsedLen_ = parseBuffer();
@@ -101,14 +108,24 @@ public:
 
 private:
     friend class OxpinyinCandidateWord;
+    friend class OxpinyinPredictedWord;
     friend class OxpinyinEngine;
 
     // Candidate-list interaction while composing; true when consumed.
     bool handleCandidateKey(KeyEvent &keyEvent);
 
+    // Key handling in the Predicting state; true when consumed.
+    bool handlePredictingKey(KeyEvent &keyEvent);
+
     // Selection at cursor_: terminal (whole buffer consumed) commits via
     // the sentence path; partial pins the span and keeps composing.
     void selectCandidate(size_t index);
+
+    // Prediction: enter the predicting state for a committed string.
+    void enterPredicting(const std::string &committed);
+
+    // Select a predicted candidate by index.
+    void selectPredicted(size_t index);
 
     std::string sentence() const;
     // Active-scheme aux text (full/double/chewing variant), cursor marker
@@ -129,6 +146,10 @@ private:
     std::string buffer_;   // raw keys, scheme-dependent
     size_t parsedLen_ = 0; // bytes the engine accepted
     size_t cursor_ = 0;    // raw-coordinate end of the chosen prefix
+
+    // Phase 5: prediction state
+    bool predicting_ = false;
+    std::string lastCommitted_; // context for re-prediction chains
 };
 
 class OxpinyinEngineFactory final : public AddonFactory {

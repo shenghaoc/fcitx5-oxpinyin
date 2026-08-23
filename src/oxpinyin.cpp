@@ -155,6 +155,23 @@ private:
     size_t index_;
 };
 
+/*
+ * Predicted-candidate word: carries the index back into selectPredicted.
+ */
+class OxpinyinPredictedWord final : public CandidateWord {
+public:
+    OxpinyinPredictedWord(OxpinyinEngine *engine, Text display, size_t index)
+        : CandidateWord(std::move(display)), engine_(engine), index_(index) {}
+
+    void select(InputContext *ic) const override {
+        engine_->state(ic)->selectPredicted(index_);
+    }
+
+private:
+    OxpinyinEngine *engine_;
+    size_t index_;
+};
+
 /*******************************************************************************
  * OxpinyinEngine
  ******************************************************************************/
@@ -348,6 +365,21 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         return;
     }
 
+    // Phase 5: prediction state intercepts keys before composition logic.
+    if (predicting_) {
+        if (handlePredictingKey(keyEvent)) {
+            keyEvent.filterAndAccept();
+            return;
+        }
+        const auto key = keyEvent.key();
+        if (key.isSimple() && acceptChar(static_cast<char>(key.sym() & 0xff))) {
+            // Prediction was dismissed: process this key as the first key of
+            // a fresh composition through the ordinary key path.
+            this->keyEvent(keyEvent);
+        }
+        return;
+    }
+
     if (ic_->inputPanel().candidateList() && handleCandidateKey(keyEvent)) {
         keyEvent.filterAndAccept();
         return;
@@ -406,6 +438,9 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         }
         keyEvent.filterAndAccept();
         resetState();
+        if (*engine_->config().predictWords) {
+            enterPredicting(committed);
+        }
         return;
     }
 
@@ -511,6 +546,9 @@ void OxpinyinState::selectCandidate(size_t index) {
         pinyin_train(instance_.get(), 0);
         pinyin_remember_user_input(instance_.get(), committed.c_str(), -1);
         resetState();
+        if (*engine_->config().predictWords) {
+            enterPredicting(committed);
+        }
         return;
     }
 
@@ -597,6 +635,132 @@ std::string OxpinyinState::auxText() const {
     // cursor is pinned at 0 by design, so drop it from the display text.
     text.erase(std::remove(text.begin(), text.end(), '|'), text.end());
     return text;
+}
+
+bool OxpinyinState::handlePredictingKey(KeyEvent &keyEvent) {
+    const auto key = keyEvent.key();
+
+    // Candidate selection keys while predicting.
+    if (const auto list = ic_->inputPanel().candidateList(); list) {
+        if (key.check(FcitxKey_space)) {
+            // Space selects the first predicted candidate.
+            if (!list->empty()) {
+                list->candidate(0).select(ic_);
+                return true;
+            }
+        }
+        if (key.check(FcitxKey_Page_Down) || key.check(FcitxKey_Page_Up)) {
+            if (auto *pageable = list->toPageable();
+                pageable && !list->empty()) {
+                if (key.check(FcitxKey_Page_Down)) {
+                    pageable->next();
+                } else {
+                    pageable->prev();
+                }
+                return true;
+            }
+        }
+        if (auto index = key.keyListIndex(selectionKeys());
+            index >= 0 && index < list->size()) {
+            list->candidate(index).select(ic_);
+            return true;
+        }
+    }
+
+    // Escape: dismiss prediction, stay idle.
+    if (key.check(FcitxKey_Escape)) {
+        predicting_ = false;
+        lastCommitted_.clear();
+        updateUI();
+        return true;
+    }
+
+    // A pinyin key: dismiss prediction; keyEvent() will re-dispatch it to
+    // the normal composition path.
+    if (key.isSimple()) {
+        const auto c = static_cast<char>(key.sym() & 0xff);
+        if (acceptChar(c)) {
+            predicting_ = false;
+            lastCommitted_.clear();
+            updateUI();
+            return false;
+        }
+    }
+
+    // Any other key: dismiss prediction and pass through.
+    predicting_ = false;
+    lastCommitted_.clear();
+    updateUI();
+    return false;
+}
+
+void OxpinyinState::enterPredicting(const std::string &committed) {
+    // Called after resetState() has already cleaned the instance. Predict
+    // on the clean post-reset instance so no stale pin/buffer bleeds.
+    pinyin_guess_predicted_candidates_with_punctuations(instance_.get(),
+                                                        committed.c_str());
+    guint count = 0;
+    if (!pinyin_get_n_candidate(instance_.get(), &count) || count == 0) {
+        return; // no predictions — stay idle
+    }
+    predicting_ = true;
+    lastCommitted_ = committed;
+
+    // Build the prediction candidate list and show it.
+    auto &panel = ic_->inputPanel();
+    panel.reset();
+
+    auto list = std::make_unique<CommonCandidateList>();
+    list->setSelectionKey(selectionKeys());
+    list->setPageSize(*engine_->config().pageSize);
+    for (guint i = 0; i < count; ++i) {
+        lookup_candidate_t *candidate = nullptr;
+        if (!pinyin_get_candidate(instance_.get(), i, &candidate) ||
+            !candidate) {
+            continue;
+        }
+        const gchar *text = nullptr;
+        pinyin_get_candidate_string(instance_.get(), candidate, &text);
+        list->append<OxpinyinPredictedWord>(engine_, Text(text ? text : ""),
+                                            static_cast<size_t>(i));
+    }
+    if (!list->empty()) {
+        panel.setCandidateList(std::move(list));
+    } else {
+        predicting_ = false;
+        lastCommitted_.clear();
+    }
+    ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+}
+
+void OxpinyinState::selectPredicted(size_t index) {
+    guint count = 0;
+    if (!pinyin_get_n_candidate(instance_.get(), &count) || index >= count) {
+        return;
+    }
+    lookup_candidate_t *candidate = nullptr;
+    if (!pinyin_get_candidate(instance_.get(), index, &candidate) ||
+        !candidate) {
+        return;
+    }
+    const gchar *text = nullptr;
+    pinyin_get_candidate_string(instance_.get(), candidate, &text);
+    std::string committed = text ? text : "";
+    if (committed.empty()) {
+        return;
+    }
+
+    // Train the predicted choice.
+    pinyin_choose_predicted_candidate(instance_.get(), candidate);
+
+    // Commit the predicted text.
+    ic_->commitString(committed);
+
+    // Re-predict from the newly committed text (chain).
+    predicting_ = false;
+    lastCommitted_.clear();
+    pinyin_reset(instance_.get());
+    enterPredicting(committed);
 }
 
 void OxpinyinState::updateUI() {
@@ -701,6 +865,8 @@ void OxpinyinState::resetState() {
     buffer_.clear();
     parsedLen_ = 0;
     cursor_ = 0;
+    predicting_ = false;
+    lastCommitted_.clear();
     updateUI();
 }
 

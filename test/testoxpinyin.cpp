@@ -529,6 +529,184 @@ void testEscapeClearsPins(Instance *instance) {
     });
 }
 
+// Phase 5: after a commit with predictWords on, the engine offers predicted
+// next-word candidates — a non-empty candidate list with NO composing
+// preedit (prediction, not composition).
+void testPredictAfterCommit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Enable prediction.
+        RawConfig config;
+        config.setValueByPath("PredictWords", "True");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // After commit: prediction candidates shown, no preedit.
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+        const auto predicted = ic->inputPanel().candidateList();
+        FCITX_ASSERT(predicted && !predicted->empty());
+
+        // Clean up.
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        config.setValueByPath("PredictWords", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+// Phase 5: selecting a predicted candidate commits it AND shows a fresh
+// predicted list (re-prediction chain).
+void testPredictChain(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("PredictWords", "True");
+        oxpinyin->setConfig(config);
+
+        // A context with multiple prediction pages lets the harness select a
+        // panel-provided candidate that itself has follow-up predictions.
+        for (const auto c : std::string("zhongguo")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // We are now in prediction mode. Page to the fixture's next page;
+        // candidate text is always read from the panel, never hardcoded.
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Page_Down"), false));
+        const auto predicted = ic->inputPanel().candidateList();
+        FCITX_ASSERT(predicted && !predicted->empty());
+        const auto selected = predicted->candidate(0).text().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(selected);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("1"), false));
+
+        // The predicted selection committed and re-predicted: no composing
+        // preedit and a fresh non-empty prediction list.
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+        const auto chained = ic->inputPanel().candidateList();
+        FCITX_ASSERT(chained && !chained->empty());
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        config.setValueByPath("PredictWords", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+// Phase 5: typing a pinyin key while in prediction mode exits prediction
+// and starts a fresh composition.
+void testPredictExitOnTyping(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("PredictWords", "True");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // In prediction mode.
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+
+        // Type a pinyin key: exits prediction, starts fresh composition.
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("w"), false));
+
+        // Now composing: preedit reflects the new key, candidate list is
+        // the composition's (not prediction's).
+        const auto newPreedit = ic->inputPanel().preedit().toString();
+        const auto newClient = ic->inputPanel().clientPreedit().toString();
+        FCITX_ASSERT(!newPreedit.empty() || !newClient.empty());
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        config.setValueByPath("PredictWords", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+// Phase 5: with predictWords off, no prediction list appears after commit
+// (Phases 2-4 behavior intact).
+void testPredictToggleOff(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Explicitly off (default, but be explicit).
+        RawConfig config;
+        config.setValueByPath("PredictWords", "False");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // No prediction: panel empty, no candidates.
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+    });
+}
+
 } // namespace
 
 int main() {
@@ -559,6 +737,10 @@ int main() {
     testPartialChoiceContinues(&instance);
     testBackspaceUnpins(&instance);
     testEscapeClearsPins(&instance);
+    testPredictAfterCommit(&instance);
+    testPredictChain(&instance);
+    testPredictExitOnTyping(&instance);
+    testPredictToggleOff(&instance);
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
     instance.exec();
