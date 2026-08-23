@@ -72,15 +72,15 @@ private:
  * Per-input-context editing state: one engine instance per fcitx input
  * context, plus the client-side raw-key buffer.
  *
- * v1 (Phase 2): the offset handed to guess_candidates/choose_candidate
- * stays 0 and a selection always resolves to a commit — the full sentence
- * when the chosen candidate consumes the whole buffer, the candidate's own
- * text otherwise. The choose -> keep composing -> constrained re-decode
- * flow (Phase 4) replaces the partial branch here: it will call
- * pinyin_choose_candidate at the pin offset, keep the buffer, and re-run
- * guess_*, clearing pins with pinyin_clear_constraint on backspace into a
- * pinned run. Constraint behaviour itself stays engine-side, never in
- * this class.
+ * Phase 4: a selection that does not consume the whole buffer PINS the
+ * chosen span engine-side (pinyin_choose_candidate) and keeps composing —
+ * cursor_ is the shell's raw-coordinate copy of the choose return (the
+ * candidate's absolute end), used for the terminal check, the backspace
+ * boundary, and the (validation-only) offset passed to guess_candidates;
+ * the engine's own composition offset remains the anchor for candidate
+ * generation. Backspacing into the chosen prefix clears the covering run
+ * via pinyin_clear_constraint. All pinning stays engine-side — the shell
+ * never derives spans or re-decodes under a pin itself.
  */
 class OxpinyinState final : public InputContextProperty {
 public:
@@ -106,9 +106,8 @@ private:
     // Candidate-list interaction while composing; true when consumed.
     bool handleCandidateKey(KeyEvent &keyEvent);
 
-    // v1 commit: whole-buffer choices take the sentence path (guess ->
-    // commit -> train -> remember), partial choices commit the candidate's
-    // own text.
+    // Selection at cursor_: terminal (whole buffer consumed) commits via
+    // the sentence path; partial pins the span and keeps composing.
     void selectCandidate(size_t index);
 
     std::string sentence() const;
@@ -129,6 +128,7 @@ private:
     OxpinyinEngine *engine_;
     std::string buffer_;   // raw keys, scheme-dependent
     size_t parsedLen_ = 0; // bytes the engine accepted
+    size_t cursor_ = 0;    // raw-coordinate end of the chosen prefix
 };
 
 class OxpinyinEngineFactory final : public AddonFactory {
