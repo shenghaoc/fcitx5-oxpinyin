@@ -75,6 +75,18 @@ bool EnglishDatabase::isDatabaseExisted(const char *filename) {
         }
         sqlite3_finalize(stmt);
     }
+
+    // The version marker only proves the desc table exists; also require the
+    // english word table with its word/freq columns, so a partially created
+    // database (desc committed, english missing) is rejected.  A successful
+    // prepare confirms both the table and the named columns exist.
+    if (valid) {
+        sqlite3_stmt *schema = nullptr;
+        sql_ = "SELECT word, freq FROM english LIMIT 0;";
+        valid = sqlite3_prepare_v2(tmpDb, sql_.c_str(), -1, &schema, nullptr) ==
+                SQLITE_OK;
+        sqlite3_finalize(schema);
+    }
     sqlite3_close(tmpDb);
     return valid;
 }
@@ -109,23 +121,24 @@ bool EnglishDatabase::createDatabase(const char *filename) {
         return false;
     }
 
-    /* Create DESCription table */
+    /* Create the DESCription table and the english schema. */
+    // Divergence from upstream (two separate executeSQL calls, only the desc
+    // block transacted): create the version marker and the english word table
+    // in one transaction, so either the complete schema commits or nothing
+    // does.  On failure roll back the open transaction before closing, leaving
+    // no partial schema behind.
     sql_ = "BEGIN TRANSACTION;\n"
            "CREATE TABLE IF NOT EXISTS desc (name TEXT PRIMARY KEY, value "
            "TEXT);\n"
-           "INSERT OR IGNORE INTO desc VALUES ('version', '1.2.0');"
-           "COMMIT;\n";
-    if (!executeSQL(tmpDb)) {
-        sqlite3_close(tmpDb);
-        return false;
-    }
-
-    /* Create Schema */
-    sql_ = "CREATE TABLE IF NOT EXISTS english ("
+           "INSERT OR IGNORE INTO desc VALUES ('version', '1.2.0');\n"
+           "CREATE TABLE IF NOT EXISTS english ("
            "word TEXT NOT NULL PRIMARY KEY,"
            "freq FLOAT NOT NULL DEFAULT(0)"
-           ");";
+           ");\n"
+           "COMMIT;\n";
     if (!executeSQL(tmpDb)) {
+        sql_ = "ROLLBACK;";
+        executeSQL(tmpDb);
         sqlite3_close(tmpDb);
         return false;
     }
@@ -418,9 +431,14 @@ bool EnglishDatabase::saveUserDB() {
             break;
         }
         sqlite3_close(userdb);
+        userdb = nullptr;
 
         std::filesystem::rename(tmpfile, userDb_, ec);
-        return !ec;
+        if (!ec) {
+            return true;
+        }
+        // Rename failed: leave the loop and fall through to the shared cleanup
+        // path below, which removes the leftover tmpfile.
     } while (false);
 
     if (userdb) {
