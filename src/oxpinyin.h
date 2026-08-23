@@ -17,6 +17,7 @@
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/instance.h>
 #include <memory>
+#include <optional>
 #include <string>
 
 extern "C" {
@@ -57,6 +58,7 @@ public:
 
 private:
     friend class OxpinyinState;
+    FCITX_ADDON_DEPENDENCY_LOADER(spell, instance_->addonManager());
 
     // Options bits + scheme setters from the current config; resets active
     // instances when the scheme changes (a buffer typed under one scheme is
@@ -122,6 +124,7 @@ public:
 private:
     friend class OxpinyinCandidateWord;
     friend class OxpinyinPredictedWord;
+    friend class OxpinyinSpellCandidateWord;
     friend class OxpinyinEngine;
 
     // Candidate-list interaction while composing; true when consumed.
@@ -140,6 +143,9 @@ private:
     // Select a predicted candidate by index.
     void selectPredicted(size_t index);
 
+    // Spell candidates bypass pinyin selection/training/constraints.
+    void selectSpellCandidate(const std::string &word);
+
     std::string sentence() const;
     // Active-scheme aux text (full/double/chewing variant), cursor marker
     // stripped.
@@ -154,6 +160,11 @@ private:
     bool acceptChar(char c) const;
 
     void updateUI();
+    struct SpellHint {
+        bool hasUpper;
+        int limit;
+    };
+    std::optional<SpellHint> spellHint();
     void resetState();
 
     std::unique_ptr<pinyin_instance_t, decltype(&pinyin_free_instance)>

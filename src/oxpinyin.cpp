@@ -4,20 +4,26 @@
  */
 #include "oxpinyin.h"
 #include "oxpinyin_paths.h"
+#include "spell_public.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <ranges>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/capabilityflags.h>
+#include <fcitx-utils/charutils.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/standardpaths.h>
+#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/textformatflags.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
@@ -137,6 +143,49 @@ const KeyList &selectionKeys() {
     return keys;
 }
 
+// Match fcitx5-chinese-addons' English-versus-pinyin scoring exactly. The
+// score is also the bounded number of Spell hints to request.
+std::tuple<bool, int> englishNess(const std::string &input, bool shuangpin) {
+    const auto tokens = stringutils::split(input, " ");
+    constexpr int fullPinyinWeight = -2;
+    constexpr int shortPinyinWeight = 3;
+    constexpr int invalidPinyinWeight = 6;
+    int weight = 0;
+
+    if (std::ranges::any_of(input, charutils::isupper)) {
+        return {true, std::max<size_t>(
+                          1, ((invalidPinyinWeight * tokens.size()) + 7) / 10)};
+    }
+
+    for (const auto &token : tokens) {
+        if (shuangpin) {
+            weight +=
+                token.size() == 2 ? fullPinyinWeight / 2 : invalidPinyinWeight;
+            continue;
+        }
+        if (token == "ng") {
+            weight += fullPinyinWeight;
+            continue;
+        }
+        const auto first = token.front();
+        if (first == '\'') {
+            return {false, 0};
+        }
+        if (first == 'i' || first == 'u' || first == 'v') {
+            weight += invalidPinyinWeight;
+        } else if (token.size() <= 2) {
+            weight += shortPinyinWeight;
+        } else if (token.find_first_of("aeiou") != std::string::npos) {
+            weight += fullPinyinWeight;
+        } else {
+            weight += shortPinyinWeight;
+        }
+    }
+
+    return weight < 0 ? std::tuple{false, 0}
+                      : std::tuple{false, (weight + 7) / 10};
+}
+
 } // namespace
 
 /*
@@ -155,6 +204,23 @@ public:
 private:
     OxpinyinEngine *engine_;
     size_t index_;
+};
+
+// A Spell candidate is deliberately independent of pinyin candidate indices:
+// selecting it commits English text without pinning, training, or ranking in
+// the pinyin engine.
+class OxpinyinSpellCandidateWord final : public CandidateWord {
+public:
+    OxpinyinSpellCandidateWord(OxpinyinEngine *engine, std::string word)
+        : CandidateWord(Text(word)), engine_(engine), word_(std::move(word)) {}
+
+    void select(InputContext *ic) const override {
+        engine_->state(ic)->selectSpellCandidate(word_);
+    }
+
+private:
+    OxpinyinEngine *engine_;
+    std::string word_;
 };
 
 /*
@@ -448,7 +514,8 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             const auto zhuyin =
                 zhuyinValue(engine_->config().inputScheme.value()) > 0;
             if (!zhuyin && buffer_.size() == 1 &&
-                pinyin_get_parsed_input_length(instance_.get()) == 0) {
+                pinyin_get_parsed_input_length(instance_.get()) == 0 &&
+                !spellHint()) {
                 resetState();
                 if (auto result = punct_.process(
                         key.sym(), *engine_->config().chinesePunctuation)) {
@@ -600,6 +667,14 @@ void OxpinyinState::selectCandidate(size_t index) {
     updateUI();
 }
 
+void OxpinyinState::selectSpellCandidate(const std::string &word) {
+    if (!composing() || word.empty()) {
+        return;
+    }
+    ic_->commitString(word);
+    resetState();
+}
+
 std::string OxpinyinState::sentence() const {
     char *s = nullptr;
     if (pinyin_get_sentence(instance_.get(), 0, &s)) {
@@ -642,7 +717,7 @@ bool OxpinyinState::acceptChar(char c) const {
     case S::DoublePinyinABC:
     case S::DoublePinyinPYJJ:
     case S::DoublePinyinXiaohe:
-        return (c >= 'a' && c <= 'z') || c == ';';
+        return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) || c == ';';
     case S::ZhuyinStandard:
     case S::ZhuyinHsu:
     case S::ZhuyinIBM:
@@ -676,8 +751,23 @@ bool OxpinyinState::acceptChar(char c) const {
         if (c == '\'') {
             return !buffer_.empty();
         }
-        return c >= 'a' && c <= 'z';
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
     }
+}
+
+std::optional<OxpinyinState::SpellHint> OxpinyinState::spellHint() {
+    // A partial pinyin choice has an engine-owned constrained prefix. A Spell
+    // word is a whole-buffer direct commit, so never offer one where selecting
+    // it could discard or reinterpret that prefix.
+    if (cursor_ != 0 || !*engine_->config().spellEnabled) {
+        return std::nullopt;
+    }
+    const auto [hasUpper, limit] = englishNess(
+        buffer_, doublePinyinValue(engine_->config().inputScheme.value()) > 0);
+    if (!limit || !engine_->spell()) {
+        return std::nullopt;
+    }
+    return SpellHint{hasUpper, limit};
 }
 
 std::string OxpinyinState::auxText() const {
@@ -885,13 +975,12 @@ void OxpinyinState::updateUI() {
         }
     }
 
+    std::vector<std::pair<std::string, size_t>> pinyinCandidates;
     if (parsedLen_ > 0) {
         pinyin_guess_candidates(instance_.get(), cursor_, 0);
         guint count = 0;
-        if (pinyin_get_n_candidate(instance_.get(), &count) && count > 0) {
-            auto list = std::make_unique<CommonCandidateList>();
-            list->setSelectionKey(selectionKeys());
-            list->setPageSize(*engine_->config().pageSize);
+        if (pinyin_get_n_candidate(instance_.get(), &count)) {
+            pinyinCandidates.reserve(count);
             for (guint i = 0; i < count; ++i) {
                 lookup_candidate_t *candidate = nullptr;
                 if (!pinyin_get_candidate(instance_.get(), i, &candidate) ||
@@ -900,13 +989,40 @@ void OxpinyinState::updateUI() {
                 }
                 const gchar *text = nullptr;
                 pinyin_get_candidate_string(instance_.get(), candidate, &text);
-                list->append<OxpinyinCandidateWord>(
-                    engine_, Text(text ? text : ""), static_cast<size_t>(i));
-            }
-            if (!list->empty()) {
-                panel.setCandidateList(std::move(list));
+                pinyinCandidates.emplace_back(text ? text : "", i);
             }
         }
+    }
+
+    std::vector<std::string> spellCandidates;
+    int spellPosition = -1;
+    if (const auto hint = spellHint()) {
+        spellCandidates = engine_->spell()->call<ISpell::hintWithProvider>(
+            "en", SpellProvider::Custom, buffer_, hint->limit);
+        spellPosition = hint->hasUpper ? 0 : 1;
+    }
+
+    if (!pinyinCandidates.empty() || !spellCandidates.empty()) {
+        auto list = std::make_unique<CommonCandidateList>();
+        list->setSelectionKey(selectionKeys());
+        list->setPageSize(*engine_->config().pageSize);
+        const auto appendSpellCandidates = [&]() {
+            for (const auto &word : spellCandidates) {
+                list->append<OxpinyinSpellCandidateWord>(engine_, word);
+            }
+        };
+
+        for (size_t i = 0; i < pinyinCandidates.size(); ++i) {
+            if (static_cast<int>(i) == spellPosition) {
+                appendSpellCandidates();
+            }
+            const auto &[text, index] = pinyinCandidates[i];
+            list->append<OxpinyinCandidateWord>(engine_, Text(text), index);
+        }
+        if (spellPosition >= static_cast<int>(pinyinCandidates.size())) {
+            appendSpellCandidates();
+        }
+        panel.setCandidateList(std::move(list));
     }
 
     ic_->updateUserInterface(UserInterfaceComponent::InputPanel);

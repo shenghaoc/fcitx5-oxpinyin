@@ -7,7 +7,7 @@ find_package(PkgConfig REQUIRED)
 find_package(Gettext REQUIRED)
 find_package(Fcitx5Core ${REQUIRED_FCITX_VERSION} REQUIRED)
 find_package(Fcitx5Utils REQUIRED)
-find_package(Fcitx5Module REQUIRED COMPONENTS TestFrontend)
+find_package(Fcitx5Module REQUIRED COMPONENTS Spell TestFrontend)
 
 set(ENGINE "libpinyin" CACHE STRING "Engine backend (libpinyin or oxpinyin)")
 set_property(CACHE ENGINE PROPERTY STRINGS libpinyin oxpinyin)

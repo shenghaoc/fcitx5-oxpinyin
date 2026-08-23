@@ -74,6 +74,8 @@ FCITX_CONFIGURATION(
     Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
     Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
                               false};
+    Option<bool> spellEnabled{this, "SpellEnabled",
+                              _("Show English candidates"), true};
     // No full-width config option: full-width is a delegated toggle owned by
     // the optional `fullwidth` module (its own status-area Action + hotkey),
     // wired in activate() alongside chttrans. The module's CommitFilter fires
