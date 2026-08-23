@@ -10,13 +10,11 @@ Library=oxpinyin
 
 [Addon/Dependencies]
 0=core:@REQUIRED_FCITX_VERSION@
-1=punctuation
 
 [Addon/OptionalDependencies]
-0=fullwidth
-1=quickphrase
-2=chttrans
-3=cloudpinyin
-4=notifications
-5=spell
-6=pinyinhelper
+0=quickphrase
+1=chttrans
+2=cloudpinyin
+3=notifications
+4=spell
+5=pinyinhelper

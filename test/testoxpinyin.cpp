@@ -9,7 +9,6 @@
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/macros.h>
-#include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/testing.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/addonmanager.h>
@@ -54,6 +53,9 @@ void testLoadAndPassthrough(Instance *instance) {
         setupGroup(instance);
 
         auto *testfrontend = instance->addonManager().addon("testfrontend");
+        // A missing test frontend would otherwise segfault on the first
+        // call() below; name the real cause instead.
+        FCITX_ASSERT(testfrontend);
         auto uuid =
             testfrontend->call<ITestFrontend::createInputContext>("testapp");
         auto *ic = instance->inputContextManager().findByUUID(uuid);
@@ -710,20 +712,230 @@ void testPredictToggleOff(Instance *instance) {
     });
 }
 
+// Phase 5: Chinese punctuation — representative ASCII→Chinese mappings
+// via the internal Punctuation module, behaviour-identical to
+// ibus-libpinyin FallbackEditor::processPunctForSimplifiedChinese.
+void testPunctuationMapping(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        struct Case {
+            KeySym sym;
+            std::string expected;
+        };
+        // clang-format off
+        const Case cases[] = {
+            {FcitxKey_exclam,       "\xef\xbc\x81"},       // ！
+            {FcitxKey_comma,        "\xef\xbc\x8c"},       // ，
+            {FcitxKey_period,       "\xe3\x80\x82"},       // 。
+            {FcitxKey_question,     "\xef\xbc\x9f"},       // ？
+            {FcitxKey_colon,        "\xef\xbc\x9a"},       // ：
+            {FcitxKey_semicolon,    "\xef\xbc\x9b"},       // ；
+            {FcitxKey_less,         "\xe3\x80\x8a"},       // 《
+            {FcitxKey_greater,      "\xe3\x80\x8b"},       // 》
+            {FcitxKey_parenleft,    "\xef\xbc\x88"},       // （
+            {FcitxKey_parenright,   "\xef\xbc\x89"},       // ）
+            {FcitxKey_bracketleft,  "\xe3\x80\x90"},       // 【
+            {FcitxKey_bracketright, "\xe3\x80\x91"},       // 】
+            {FcitxKey_braceleft,    "\xe3\x80\x8e"},       // 『
+            {FcitxKey_braceright,   "\xe3\x80\x8f"},       // 』
+            {FcitxKey_backslash,    "\xe3\x80\x81"},       // 、
+            {FcitxKey_grave,        "\xc2\xb7"},           // ·
+            {FcitxKey_asciitilde,   "\xef\xbd\x9e"},       // ～
+            {FcitxKey_dollar,       "\xef\xbf\xa5"},       // ￥
+            {FcitxKey_asciicircum,  "\xe2\x80\xa6\xe2\x80\xa6"}, // ……
+            {FcitxKey_underscore,   "\xe2\x80\x94\xe2\x80\x94"}, // ——
+        };
+        // clang-format on
+
+        for (const auto &tc : cases) {
+            testfrontend->call<ITestFrontend::pushCommitExpectation>(
+                tc.expected);
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(tc.sym), false));
+        }
+
+        instance->deactivate();
+    });
+}
+
+// Phase 5: paired-quote alternation (single and double).
+void testPairedQuotes(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Single quote: opening, closing, opening again.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe2\x80\x98"); // '
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_apostrophe), false));
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe2\x80\x99"); // '
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_apostrophe), false));
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe2\x80\x98"); // ' again
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_apostrophe), false));
+
+        // Double quote: opening, closing.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe2\x80\x9c"); // "
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_quotedbl), false));
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe2\x80\x9d"); // "
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_quotedbl), false));
+
+        instance->deactivate();
+    });
+}
+
+// Phase 5: comma and period after a digit pass through (not converted).
+void testCommaAfterDigit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // '5' passes through (not consumed by punctuation).
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_5), false));
+        // Comma after digit: not consumed.
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_comma), false));
+        // Period after digit (prev is now comma, not digit): converted.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xe3\x80\x82"); // 。
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_period), false));
+
+        instance->deactivate();
+    });
+}
+
+// Phase 5: unmapped punctuation keys (like @, #, /) pass through.
+void testUnmappedPunctPassthrough(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_at), false));
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_numbersign), false));
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_slash), false));
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_plus), false));
+
+        instance->deactivate();
+    });
+}
+
+// Phase 5: typing punctuation mid-composition commits the sentence
+// first, then commits the punctuation.
+void testPunctuationMidComposition(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        FCITX_ASSERT(!preedit.empty());
+
+        // '!' mid-composition: commits the sentence, then the '！'.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xef\xbc\x81"); // ！
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_exclam), false));
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+
+        instance->deactivate();
+    });
+}
+
+// Punctuation typed while a prediction list is shown must still convert.
+// The dismissal path used to re-dispatch only keys acceptChar() accepts,
+// so punctuation was swallowed: prediction closed and nothing committed.
+void testPunctuationDismissesPrediction(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("PredictWords", "True");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // A prediction list is on screen.
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+
+        // '!' is consumed and commits '！' — not dropped by the dismissal.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xef\xbc\x81"); // ！
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_exclam), false));
+
+        // Prediction is gone and nothing is composing.
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+
+        config.setValueByPath("PredictWords", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
 } // namespace
 
 int main() {
-    // The system pkgdatadir is needed so the punctuation addon (a hard
-    // dependency) resolves from the distro's fcitx5-chinese-addons install
-    // — same trick as upstream testpinyin.
-    setupTestingEnvironment(
-        TESTING_BINARY_DIR, {TESTING_BINARY_DIR "/src"},
-        {TESTING_BINARY_DIR "/test", StandardPaths::fcitxPath("pkgdatadir")});
+    // No pkgdatadir append: that was only ever needed to reach
+    // chinese-addons' punctuation.conf. setupTestingEnvironment already
+    // adds fcitxPath("addondir") and fcitxPath("pkgdatadir", "testing")
+    // itself, which is where the TestFrontend addon lives.
+    setupTestingEnvironment(TESTING_BINARY_DIR, {TESTING_BINARY_DIR "/src"},
+                            {TESTING_BINARY_DIR "/test"});
     char arg0[] = "testoxpinyin";
     char arg1[] = "--disable=all";
-    // punctuation is a hard addon dependency, so it must be enabled too
-    // (upstream testpinyin does the same).
-    char arg2[] = "--enable=testim,testfrontend,oxpinyin,punctuation";
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin";
     char *argv[] = {arg0, arg1, arg2};
     fcitx::Log::setLogRule("default=5,oxpinyin=5");
     fcitx::Instance instance(FCITX_ARRAY_SIZE(argv), argv);
@@ -744,6 +956,12 @@ int main() {
     testPredictChain(&instance);
     testPredictExitOnTyping(&instance);
     testPredictToggleOff(&instance);
+    testPunctuationMapping(&instance);
+    testPairedQuotes(&instance);
+    testCommaAfterDigit(&instance);
+    testUnmappedPunctPassthrough(&instance);
+    testPunctuationMidComposition(&instance);
+    testPunctuationDismissesPrediction(&instance);
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
     instance.exec();

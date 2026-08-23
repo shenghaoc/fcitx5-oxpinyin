@@ -6,6 +6,7 @@
 #define FCITX5_OXPINYIN_OXPINYIN_H_
 
 #include "oxpinyinconfig.h"
+#include "punctuation.h"
 
 #include <fcitx-config/rawconfig.h>
 #include <fcitx/addonfactory.h>
@@ -132,6 +133,10 @@ private:
     // stripped.
     std::string auxText() const;
 
+    // Commit the current sentence (decoded + unparsed tail), train, reset.
+    // Returns the committed string (empty if not composing).
+    std::string commitSentence();
+
     // Dispatch on the configured scheme.
     size_t parseBuffer() const;
     bool acceptChar(char c) const;
@@ -143,6 +148,7 @@ private:
         instance_;
     InputContext *ic_;
     OxpinyinEngine *engine_;
+    Punctuation punct_;
     std::string buffer_;   // raw keys, scheme-dependent
     size_t parsedLen_ = 0; // bytes the engine accepted
     size_t cursor_ = 0;    // raw-coordinate end of the chosen prefix
