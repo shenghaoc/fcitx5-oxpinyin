@@ -85,8 +85,31 @@ Aux-text preedit, client-vs-panel, FCITX_CONFIGURATION (page size, scheme,
 fuzzy) → set_options/scheme setters; harness tests for scheme switch +
 zhuyin case.
 
-## Phase 4 — partial-choice / constrained re-decode (pending GO)
+## Phase 4 — partial-choice / constrained re-decode (IN PROGRESS — local
+## gates green, PR CI pending)
 
-choose_candidate pins; clear_constraint on backspace-into-pin; re-decode;
-whole-buffer choose commits; predicted path optional. Engine-side
-correctness only.
+- [x] Contract verified from pinyin.h + impl: choose_candidate's return is
+      the candidate's absolute end in the raw-input coordinates of the
+      active parse mode (scheme-agnostic mapping engine-side); the offset
+      passed to guess_candidates is validation-only — the session's own
+      composition offset anchors generation; clear_constraint takes the
+      same raw coordinates and clears the whole covering run.
+- [x] cursor_ (raw coords) mirrors the choose return; selectCandidate's
+      partial branch pins and keeps composing; terminal commits the
+      constrained sentence + train + remember (decoded only, the 3ebaf6e
+      rule).
+- [x] Backspace into the chosen prefix: clear_constraint at the edit
+      position, cursor_ bounded there; free-tail edits re-parse with the
+      engine keeping pins (#146). Plain keystrokes never touch cursor_.
+- [x] Constraint lifetime: pinyin_reset is the parse-path reset and KEEPS
+      the store — resetState() sweeps clear_constraint across the buffer
+      before resetting, so no pin survives a reset, commit, or the
+      scheme-change reset (which inherits the sweep).
+- [x] Prediction left unwired (pinyin_choose_predicted_candidate stays a
+      hook).
+- [x] Tests: partial-choice-continues (no commit, tail list via
+      totalSize), backspace-unpins + fresh-composition equality, escape
+      mid-pin reproduces the unconstrained reference; all prior tests
+      green.
+- [ ] Gates: local all green (incl. ASan); branch + PR; both CI workflows
+      green; STOP report.

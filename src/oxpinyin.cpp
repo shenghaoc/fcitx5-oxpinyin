@@ -413,6 +413,15 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         if (buffer_.empty()) {
             return;
         }
+        const auto pos = buffer_.size() - 1;
+        if (pos < cursor_) {
+            // Deleting into the chosen prefix: unpin the run covering the
+            // deleted position (the engine clears the whole run; false
+            // means it was already free) and bound the shell's cursor at
+            // the edit point.
+            pinyin_clear_constraint(instance_.get(), pos);
+            cursor_ = pos;
+        }
         buffer_.pop_back();
         if (buffer_.empty()) {
             keyEvent.filterAndAccept();
@@ -478,31 +487,38 @@ void OxpinyinState::selectCandidate(size_t index) {
         !candidate) {
         return;
     }
-    const gchar *text = nullptr;
-    pinyin_get_candidate_string(instance_.get(), candidate, &text);
-    const std::string chosen = text ? text : "";
 
-    const auto newOffset =
-        pinyin_choose_candidate(instance_.get(), 0, candidate);
-    if (newOffset >= 0 && static_cast<size_t>(newOffset) >= parsedLen_ &&
+    // Pins the chosen span engine-side; the return is the candidate's
+    // absolute end in the raw-input coordinates of the active parse mode.
+    const auto newCursor =
+        pinyin_choose_candidate(instance_.get(), cursor_, candidate);
+    if (newCursor < 0) {
+        return;
+    }
+
+    if (static_cast<size_t>(newCursor) >= parsedLen_ &&
         parsedLen_ == buffer_.size()) {
-        // Whole buffer consumed: commit the sentence the choice produced,
-        // then train and remember it.
+        // Whole buffer consumed: commit the constrained sentence the
+        // choices produced, then train and remember it (decoded only).
         pinyin_guess_sentence(instance_.get());
         auto committed = sentence();
         if (committed.empty()) {
-            committed = chosen;
+            const gchar *text = nullptr;
+            pinyin_get_candidate_string(instance_.get(), candidate, &text);
+            committed = text ? text : "";
         }
         ic_->commitString(committed);
         pinyin_train(instance_.get(), 0);
         pinyin_remember_user_input(instance_.get(), committed.c_str(), -1);
-    } else {
-        // Partial choice: v1 commits the candidate's own text and clears.
-        // Phase 4 replaces this branch with the constrained re-decode
-        // (choose -> keep composing -> re-run guess_*).
-        ic_->commitString(chosen);
+        resetState();
+        return;
     }
-    resetState();
+
+    // Partial choice: keep composing under the pin. cursor_ mirrors the
+    // choose return; the engine re-decodes the tail — its own composition
+    // offset anchors the rebuilt candidate list.
+    cursor_ = static_cast<size_t>(newCursor);
+    updateUI();
 }
 
 std::string OxpinyinState::sentence() const {
@@ -641,7 +657,7 @@ void OxpinyinState::updateUI() {
     }
 
     if (parsedLen_ > 0) {
-        pinyin_guess_candidates(instance_.get(), 0, 0);
+        pinyin_guess_candidates(instance_.get(), cursor_, 0);
         guint count = 0;
         if (pinyin_get_n_candidate(instance_.get(), &count) && count > 0) {
             auto list = std::make_unique<CommonCandidateList>();
@@ -670,11 +686,21 @@ void OxpinyinState::updateUI() {
 void OxpinyinState::reset() { resetState(); }
 
 void OxpinyinState::resetState() {
-    buffer_.clear();
-    parsedLen_ = 0;
+    // pinyin_reset is the parse-path reset: the constraint store, the
+    // selection record, and the raw input SURVIVE it (the L2 lifetime that
+    // lets pins ride out a re-parse). Sweep the runs explicitly so no pin
+    // leaks into the next composition or across a scheme switch — each
+    // clear_constraint hit frees the whole covering run; misses are free
+    // cells and cost nothing.
     if (instance_) {
+        for (size_t i = buffer_.size(); i-- > 0;) {
+            pinyin_clear_constraint(instance_.get(), i);
+        }
         pinyin_reset(instance_.get());
     }
+    buffer_.clear();
+    parsedLen_ = 0;
+    cursor_ = 0;
     updateUI();
 }
 
