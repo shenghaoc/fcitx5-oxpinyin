@@ -42,7 +42,7 @@ jobs:
             libglib2.0-dev libibus-1.0-dev libsqlite3-dev
       - name: Install pinned libtkrzw
         run: |
-          # Mirrors pinyin-rs .github/actions/install-tkrzw: Ubuntu ships no
+          # Mirrors oxpinyin's .github/actions/install-tkrzw: Ubuntu ships no
           # tkrzw package, so build the pinned tarball.
           version=1.0.32
           sha256=d3404dfac6898632b69780c0f0994c5f6ba962191a61c9b0f4b53ba8bb27731c

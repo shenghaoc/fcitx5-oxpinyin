@@ -31,6 +31,10 @@
       `Assisted-by: Z.ai:GLM-5.3` house form; `.githooks/commit-msg` delegates
       to `.github/scripts/lint-commits.sh`; CI trailer-lint + trailer-test);
       history rewritten to canonical trailers from the root.
+- [x] Post-review 2: the engine pin's full SHA had been fabricated from the
+      short prefix — corrected to the true tip `78b22eefa28…` (engine main was
+      never rewritten; reflog-confirmed); pin-capture + remote-verification
+      rules encoded in AGENTS.md; the false narrative retracted from history.
 
 ## Phase 2 — engine loop (pending GO)
 

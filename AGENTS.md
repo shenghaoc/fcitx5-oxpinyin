@@ -100,6 +100,19 @@ way the oracle is pinned at `0c5e80e` — never floating on `main` HEAD. An
 addon building against a moving engine main is non-reproducible and breaks
 bisection across both repos.
 
+### Pin discipline (the fabricated-SHA lesson, 2026-08-23)
+
+- A full-SHA pin is captured from the source of truth at pin time —
+  `git rev-parse origin/main` in the engine checkout, or the GitHub API —
+  and pasted verbatim. A remembered short SHA is **never** expanded by
+  hand: the missing 33 hex digits would be invented, and CI pays for it
+  with "not our ref" days later.
+- A diagnosis that posits remote-state change (force-push, rename,
+  deletion, garbage collection) is verified against the remote before it
+  is acted on — and before it is written into a commit message. "My ref
+  doesn't resolve" is, first and always, a candidate bug in the ref
+  itself.
+
 ## Commit identity
 
 Every commit: author AND committer `Shenghao Chen <shenghaoc@outlook.com>`,
