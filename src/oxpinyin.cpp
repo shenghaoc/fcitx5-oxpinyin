@@ -309,7 +309,11 @@ void OxpinyinEngine::applyConfig() {
         // re-decode a buffer typed under the previous scheme.
         if (factory_.registered()) {
             instance_->inputContextManager().foreach([this](InputContext *ic) {
-                state(ic)->resetState();
+                auto *st = state(ic);
+                if (st->composing() &&
+                    instance_->inputMethod(ic) == "oxpinyin") {
+                    st->resetState();
+                }
                 return true;
             });
         }
@@ -603,6 +607,10 @@ void OxpinyinState::updateUI() {
         if (!aux.empty()) {
             preedit.append(aux, TextFormatFlags{TextFormatFlag::Underline,
                                                 TextFormatFlag::HighLight});
+        }
+        if (parsedLen_ < buffer_.size()) {
+            preedit.append(buffer_.substr(parsedLen_),
+                           TextFormatFlag::Underline);
         }
         if (preedit.empty()) {
             preedit.append(buffer_, TextFormatFlag::Underline);
