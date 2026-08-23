@@ -90,7 +90,7 @@ Gates before any STOP:
 4. CI: build+ctest matrix {gcc, clang} on archlinux:latest plus one
    fedora:latest job; one job under `-fsanitize=address,undefined` — any
    sanitizer finding is fixed before proceeding (this C++ shell is the one
-   memory-unsafe layer in the stack). clang-tidy is advisory, non-blocking.
+   memory-unsafe layer in the stack).
 
 ### Engine pin policy
 

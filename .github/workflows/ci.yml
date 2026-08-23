@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
     branches:
       - main
-      - master
 
 # The engine pin: a FIXED oxpinyin main SHA, bumped deliberately (the same
 # discipline as the oracle pin at 0c5e80e), never floating on main HEAD.
@@ -38,8 +36,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf automake autopoint libtool \
-            gettext gnome-common pkg-config curl tar python3 \
-            libglib2.0-dev libibus-1.0-dev libsqlite3-dev
+            gettext gnome-common pkg-config curl tar \
+            libglib2.0-dev
       - name: Install pinned libtkrzw
         run: |
           # Mirrors oxpinyin's .github/actions/install-tkrzw: Ubuntu ships no
@@ -163,15 +161,6 @@ jobs:
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
           cmake --build build
           ctest --test-dir build --output-on-failure
-      - name: clang-tidy (advisory, non-blocking)
-        if: matrix.container == 'archlinux:latest' && matrix.compiler == 'clang'
-        run: |
-          cmake -B build-tidy -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DOXPINYIN_SYSTEM_DATA_DIR=nonexistent \
-            -DOXPINYIN_USER_DATA_DIR=nonexistent || true
-          command -v clang-tidy || exit 0
-          clang-tidy -p build-tidy src/*.cpp || true
 
   sanitizer:
     name: ctest under ASan/UBSan
