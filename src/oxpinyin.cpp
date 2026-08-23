@@ -24,8 +24,10 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/statusarea.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterface.h>
+#include <fcitx/userinterfacemanager.h>
 
 FCITX_DEFINE_LOG_CATEGORY(oxpinyin_log, "oxpinyin");
 
@@ -219,7 +221,31 @@ void OxpinyinEngine::keyEvent(const InputMethodEntry & /*entry*/,
 }
 
 void OxpinyinEngine::activate(const InputMethodEntry & /*entry*/,
-                              InputContextEvent & /*event*/) {}
+                              InputContextEvent &event) {
+    // Request the optional conversion modules and, when present, add their
+    // per-input-context toggle Actions to this IM's status group.
+    //
+    // Both chttrans (simplified/traditional) and fullwidth own GLOBAL
+    // CommitFilters, but each fires ONLY for input contexts whose status area
+    // carries its Action (the modules gate on
+    // `toggleAction_.isParent(&ic->statusArea())`). So adding the Action is
+    // exactly what enables the conversion for this IM — the shell performs no
+    // conversion itself, and there is no per-call convert to invoke.
+    //
+    // Everything is guarded: a module that is not installed makes both the
+    // dependency loader and lookupAction return null, so the toggle is skipped
+    // and the addon runs unaffected. StatusArea clears the InputMethod group
+    // before every activate(), so re-adding here never duplicates.
+    chttrans();
+    fullwidth();
+    auto *ic = event.inputContext();
+    for (const auto *actionName : {"chttrans", "fullwidth"}) {
+        if (auto *action =
+                instance_->userInterfaceManager().lookupAction(actionName)) {
+            ic->statusArea().addAction(StatusGroup::InputMethod, action);
+        }
+    }
+}
 
 void OxpinyinEngine::deactivate(const InputMethodEntry &entry,
                                 InputContextEvent &event) {

@@ -74,8 +74,12 @@ FCITX_CONFIGURATION(
     Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
     Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
                               false};
-    // No full-width option: fcitx5's global `fullwidth` module owns that
-    // session-wide, the way fcitx5-chewing leaves it alone.
+    // No full-width config option: full-width is a delegated toggle owned by
+    // the optional `fullwidth` module (its own status-area Action + hotkey),
+    // wired in activate() alongside chttrans. The module's CommitFilter fires
+    // only for input contexts carrying its Action, so adding the Action is
+    // what enables it; when the module is absent the toggle simply does not
+    // appear.
     Option<bool> chinesePunctuation{this, "ChinesePunctuation",
                                     _("Use Chinese punctuation"), true};);
 

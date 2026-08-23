@@ -11,6 +11,7 @@
 #include <fcitx-config/rawconfig.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
+#include <fcitx/addonmanager.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontextproperty.h>
 #include <fcitx/inputmethodengine.h>
@@ -61,6 +62,17 @@ private:
     // instances when the scheme changes (a buffer typed under one scheme is
     // never re-decoded under another).
     void applyConfig();
+
+    // Optional Chinese-addons conversion modules, resolved by name at
+    // runtime. Each loader returns null when the module is not installed; the
+    // matching status-area toggle is then simply not added (activate()). Both
+    // conversions are the modules' own global CommitFilters — the shell wires
+    // only the per-input-context toggle Action, never any conversion itself.
+    // (cloudpinyin is intentionally NOT wired: its typed request() call needs
+    // cloudpinyin_public.h at build time, which CI does not ship; keeping the
+    // addon header-free is the load-without-modules invariant.)
+    FCITX_ADDON_DEPENDENCY_LOADER(chttrans, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(fullwidth, instance_->addonManager());
 
     Instance *instance_;
     FactoryFor<OxpinyinState> factory_;
