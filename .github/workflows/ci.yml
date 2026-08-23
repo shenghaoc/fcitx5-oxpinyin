@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 # The engine pin: a FIXED oxpinyin main SHA, bumped deliberately (the same
 # discipline as the oracle pin at 0c5e80e), never floating on main HEAD.
 # 78b22ee contains the §3 constraint merges (#145/#146, merge commit f801cda).
