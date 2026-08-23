@@ -36,11 +36,27 @@
       never rewritten; reflog-confirmed); pin-capture + remote-verification
       rules encoded in AGENTS.md; the false narrative retracted from history.
 
-## Phase 2 — engine loop (pending GO)
+## Phase 2 — engine loop (IN PROGRESS — local gates green, CI pending)
 
-Buffer/parse/guess/select/commit/reset wiring per design §2; harness tests:
-nihao preedit + candidates + commit expectation; paging; backspace; escape;
-Ctrl-combo passthrough.
+- [x] keyEvent wiring: filterAndAccept for handled keys; releases and
+      modifier combos pass through; normalized key().
+- [x] Printable pinyin -> raw buffer -> parse_more_full_pinyins; first-key
+      guard via get_parsed_input_length (un-swallowed passthrough).
+- [x] guess_candidates(0) -> get_n_candidate/get_candidate/get_candidate_
+      string into CommonCandidateList (page size 5, digit selection keys,
+      Page_Up/Page_Down paging).
+- [x] Space = candidate 0; Enter commits sentence(0) + unparsed remainder
+      (raw buffer fallback); Backspace edits + re-parses; Escape resets
+      (pinyin_reset).
+- [x] Selection: choose_candidate(0, cand); whole-buffer -> sentence +
+      train(0) + remember_user_input; partial -> commit candidate text
+      (Phase 4 branch documented in-code). pinyin_save on deactivate.
+- [x] Harness: nihao preedit+candidates+commit expectation; backspace;
+      escape; Ctrl-combo passthrough mid-composition; digit selection;
+      paging. Ownership: candidate strings borrowed-copy, sentence
+      malloc'd -> free().
+- [ ] Gates: local gcc+clang+format+ctest+ASan green; commit; push; CI
+      green; report + STOP.
 
 ## Phase 3 — preedit/aux + config (pending GO)
 
