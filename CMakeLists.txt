@@ -40,6 +40,18 @@ set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
 
 option(ENABLE_TEST "Build test" ON)
 
+# English input mode (ported from ibus-libpinyin's EnglishEditor): typing
+# v opens a prefix-matched English word list backed by SQLite.  Optional
+# so the sqlite3 dependency stays opt-in, mirroring upstream's
+# --enable-english-input-mode (default enabled there too).
+option(ENABLE_ENGLISH_INPUT_MODE
+       "Build the English input mode (requires SQLite)" ON)
+if (ENABLE_ENGLISH_INPUT_MODE)
+    pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
+    find_program(AWK_EXECUTABLE NAMES gawk awk mawk REQUIRED)
+    find_program(SQLITE3_EXECUTABLE NAMES sqlite3 REQUIRED)
+endif ()
+
 # Sanitizer builds link the ASan/UBSan runtime into the test executable, so
 # the addon module must be allowed to reference it: strip the
 # -Wl,--no-undefined that Fcitx5CompilerSettings adds.
@@ -55,6 +67,9 @@ endif ()
 
 add_subdirectory(src)
 add_subdirectory(po)
+if (ENABLE_ENGLISH_INPUT_MODE)
+    add_subdirectory(data)
+endif ()
 
 fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in
                               org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml XML)

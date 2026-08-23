@@ -65,6 +65,16 @@ Without the environment overrides the shell falls back to the compiled-in
 `${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin` and then to fcitx's
 `StandardPaths` (`PkgData` + `oxpinyin`).
 
+### English input mode
+
+An English input mode ported from ibus-libpinyin's `EnglishEditor` is built
+by default: typing `v` (`V` in double pinyin) opens a prefix-matched English
+word list backed by SQLite, and committed words are learned into a per-user
+database. It adds a build-time dependency on `sqlite3` (library and CLI) and
+`awk`; configure with `-DENABLE_ENGLISH_INPUT_MODE=OFF` to drop the feature
+and the dependency. The word list (`data/wordlist`) and its `english.db`
+build pipeline are verbatim from ibus-libpinyin.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

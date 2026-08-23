@@ -1,0 +1,4 @@
+# wordlist is a verbatim copy of ibus-libpinyin's data/wordlist (CRLF line
+# endings included); any EOL normalization would break the byte-for-byte
+# provenance check against upstream.
+data/wordlist -text

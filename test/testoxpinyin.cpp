@@ -20,6 +20,18 @@
 
 #include "oxpinyinconfig.h"
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+#include <cstdlib>
+#include <filesystem>
+#include <vector>
+
+#include <unistd.h>
+
+#include <fcitx-utils/standardpaths.h>
+
+#include <sqlite3.h>
+#endif
+
 using namespace fcitx;
 
 namespace {
@@ -865,12 +877,15 @@ void testPunctuationMidComposition(Instance *instance) {
         const auto preedit = ic->inputPanel().preedit().toString();
         FCITX_ASSERT(!preedit.empty());
 
-        // '!' mid-composition: commits the sentence, then the '！'.
+        // '.' mid-composition: commits the sentence, then the '。'.
+        // ('!' is no longer usable here: with English input mode enabled
+        // it is a mode-switch symbol, matching upstream — covered by
+        // testEnglishSymbolSwitchMidComposition.)
         testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
         testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xef\xbc\x81"); // ！
+            "\xe3\x80\x82"); // 。
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_exclam), false));
+            uuid, Key(FcitxKey_period), false));
         FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
 
         instance->deactivate();
@@ -924,6 +939,514 @@ void testPunctuationDismissesPrediction(Instance *instance) {
     });
 }
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+
+// Reference listWords: the upstream SQL (byte-identical to the addon's)
+// run against the same database files the addon opened.  Valid until the
+// first English training in this process — after that the addon's
+// in-memory user copy is ahead of the file.
+std::vector<std::string> englishReferenceWords(const std::string &prefix) {
+    const char *sysDb = std::getenv("OXPINYIN_ENGLISH_SYSTEM_DB");
+    FCITX_ASSERT(sysDb && *sysDb);
+
+    std::filesystem::path userDir;
+    if (const char *env = std::getenv("OXPINYIN_USER_DATA_DIR"); env && *env) {
+        userDir = env;
+    } else {
+        userDir =
+            StandardPaths::global().userDirectory(StandardPathsType::PkgData) /
+            "oxpinyin";
+    }
+    const auto userDb = userDir / "english-user.db";
+    // Opening the addon created the user database file.
+    FCITX_ASSERT(std::filesystem::is_regular_file(userDb));
+
+    sqlite3 *db = nullptr;
+    FCITX_ASSERT(sqlite3_open_v2(sysDb, &db, SQLITE_OPEN_READONLY, nullptr) ==
+                 SQLITE_OK);
+    const std::string attach =
+        "ATTACH DATABASE '" + userDb.string() + "' AS userdb;";
+    FCITX_ASSERT(sqlite3_exec(db, attach.c_str(), nullptr, nullptr, nullptr) ==
+                 SQLITE_OK);
+    const std::string sql =
+        "SELECT word FROM ( "
+        "SELECT * FROM english UNION ALL SELECT * FROM userdb.english) "
+        " WHERE word GLOB \"" +
+        prefix + "*\" GROUP BY word ORDER BY SUM(freq) DESC;";
+    sqlite3_stmt *stmt = nullptr;
+    FCITX_ASSERT(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) ==
+                 SQLITE_OK);
+    std::vector<std::string> words;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        words.emplace_back(
+            reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return words;
+}
+
+// English mode: v opens the editor (aux line, no candidates yet), a
+// prefix lists words whose set and order matches the reference SQL
+// exactly.  Runs before any English training so the in-memory user copy
+// still equals the file the reference query reads.
+void testEnglishFrequencyOrder(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("v"), false));
+        const auto helpAux = ic->inputPanel().auxUp().toString();
+        FCITX_ASSERT(!helpAux.empty() && helpAux.front() == 'v');
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+
+        for (const auto c : std::string("th")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v th");
+
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        const auto bulk = std::dynamic_pointer_cast<CommonCandidateList>(list);
+        FCITX_ASSERT(bulk);
+
+        const auto reference = englishReferenceWords("th");
+        FCITX_ASSERT(!reference.empty());
+        FCITX_ASSERT(static_cast<size_t>(bulk->totalSize()) ==
+                     reference.size());
+        for (size_t i = 0; i < reference.size(); ++i) {
+            FCITX_ASSERT(
+                bulk->candidateFromAll(static_cast<int>(i)).text().toString() ==
+                reference[i]);
+        }
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+
+        instance->deactivate();
+    });
+}
+
+// Digit selection commits the labeled candidate and drops back to pinyin.
+void testEnglishTypeCommitAndExit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("vth")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        const auto first = list->candidate(0).text().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(first);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("1"), false));
+
+        // Exited English mode: aux gone, no list.
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        // Back in the pinyin path: a normal composition works.
+        for (const auto c : std::string("ni")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!ic->inputPanel().preedit().toString().empty() ||
+                     !ic->inputPanel().clientPreedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        instance->deactivate();
+    });
+}
+
+// True when any candidate on the panel equals the word.
+bool englishListContains(InputContext *ic, const std::string &word) {
+    const auto bulk = std::dynamic_pointer_cast<CommonCandidateList>(
+        ic->inputPanel().candidateList());
+    if (!bulk) {
+        return false;
+    }
+    for (int i = 0; i < bulk->totalSize(); ++i) {
+        if (bulk->candidateFromAll(i).text().toString() == word) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Enter commits the raw typed word and learns it: after the reset, the
+// prefix lists the learned word from the user database.  The word is
+// pid-unique (letters only — digits are label keys) so reruns against a
+// persisted user database stay stable.
+void testEnglishEnterLearnsAcrossReset(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        std::string word = "zzzq";
+        for (pid_t p = getpid(); p > 0; p /= 10) {
+            word += static_cast<char>('a' + (p % 10));
+        }
+
+        // No system word starts with zzz: this word is not known yet.
+        for (const auto c : "v" + word) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v " + word);
+        FCITX_ASSERT(!englishListContains(ic, word));
+
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(word);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+
+        // The learned word survives the editor reset.
+        for (const auto c : std::string("vzzz")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(englishListContains(ic, word));
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        instance->deactivate();
+    });
+}
+
+// Space commits the lookup-table cursor's candidate; Down moves it.
+void testEnglishSpaceCursorCommit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Space with the cursor at its start commits the first candidate.
+        for (const auto c : std::string("vth")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            list->candidate(0).text().toString());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        // Down moves the cursor; Space commits the second candidate.
+        for (const auto c : std::string("vth")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Down"), false));
+        list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && list->size() > 1);
+        FCITX_ASSERT(list->toCursorMovable());
+        FCITX_ASSERT(list->cursorIndex() == 1);
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            list->candidate(1).text().toString());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+    });
+}
+
+// Escape leaves English mode; backspacing the text away leaves it too,
+// after which backspace belongs to the client again.
+void testEnglishEscapeBackspaceExit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("v"), false));
+        FCITX_ASSERT(!ic->inputPanel().auxUp().toString().empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+
+        for (const auto c : std::string("vx")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_BackSpace), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().front() == 'v');
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_BackSpace), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+        // English mode is gone: the next backspace is the client's.
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_BackSpace), false));
+
+        instance->deactivate();
+    });
+}
+
+// An uppercase letter on an empty buffer enters English mode with a "v"
+// seed (full pinyin, upstream's A–Z rule); Enter commits the raw word.
+void testEnglishUppercaseEntry(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("H"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v H");
+        testfrontend->call<ITestFrontend::pushCommitExpectation>("H");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+
+        instance->deactivate();
+    });
+}
+
+// An English symbol mid-composition switches to English mode, carrying
+// the typed pinyin (no commit); the same symbol with no composition still
+// goes to the punctuation module.
+void testEnglishSymbolSwitchMidComposition(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // '!' mid-composition: switch, not commit (an unexpected commit
+        // would fail the frontend's expectation check).
+        for (const auto c : std::string("ni")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_exclam), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v ni!");
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        // Nothing composing after the escape: backspace passes through.
+        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_BackSpace), false));
+
+        // ';' is a switch symbol for full pinyin.
+        for (const auto c : std::string("ni")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_semicolon), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v ni;");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        // With no composition, '!' is ordinary punctuation.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xef\xbc\x81"); // ！
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_exclam), false));
+
+        instance->deactivate();
+    });
+}
+
+// Paging: Page_Down/Page_Up page, minus/equal page (upstream default),
+// comma does not (default off) and is not typed into the word either.
+void testEnglishPaging(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("va")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v a");
+        auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        {
+            const auto bulk =
+                std::dynamic_pointer_cast<CommonCandidateList>(list);
+            FCITX_ASSERT(bulk && bulk->totalSize() > bulk->pageSize());
+        }
+        const auto page0 = list->candidate(0).text().toString();
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Page_Down"), false));
+        const auto page1 =
+            ic->inputPanel().candidateList()->candidate(0).text().toString();
+        FCITX_ASSERT(page1 != page0);
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Page_Up"), false));
+        FCITX_ASSERT(
+            ic->inputPanel().candidateList()->candidate(0).text().toString() ==
+            page0);
+
+        // Equal/minus page too (upstream minus-equal-page default true).
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_equal), false));
+        FCITX_ASSERT(
+            ic->inputPanel().candidateList()->candidate(0).text().toString() ==
+            page1);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_minus), false));
+        FCITX_ASSERT(
+            ic->inputPanel().candidateList()->candidate(0).text().toString() ==
+            page0);
+
+        // Comma neither pages (comma-period-page default false) nor
+        // inserts (not an English symbol): a consumed no-op.
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_comma), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "v a");
+        FCITX_ASSERT(
+            ic->inputPanel().candidateList()->candidate(0).text().toString() ==
+            page0);
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        instance->deactivate();
+    });
+}
+
+// EnglishInputMode=False disables every trigger: v never opens the aux
+// line, and mid-composition '!' commits sentence + punctuation again.
+void testEnglishConfigToggle(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("EnglishInputMode", "False");
+        oxpinyin->setConfig(config);
+
+        // 'v' goes to the pinyin path (whether it composes or passes
+        // through is the engine's call); the English aux never appears.
+        const bool consumed = testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("v"), false);
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+        if (consumed) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key("Escape"), false));
+        }
+
+        // Mid-composition '!' is punctuation again.
+        for (const auto c : std::string("ni")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        FCITX_ASSERT(!preedit.empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            "\xef\xbc\x81"); // ！
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_exclam), false));
+
+        config.setValueByPath("EnglishInputMode", "True");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+// Double pinyin: 'v' is a composition key (no English), 'V' enters
+// English mode, and the apostrophe switches mid-composition with a "V"
+// prefix (upstream's double-pinyin trigger set).
+void testEnglishDoublePinyinTrigger(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("InputScheme", "Natural Code (ZRM)");
+        oxpinyin->setConfig(config);
+
+        const bool consumed = testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("v"), false);
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().empty());
+        if (consumed) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key("Escape"), false));
+        }
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("V"), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString().front() == 'V');
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        for (const auto c : std::string("ni")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(FcitxKey_apostrophe), false));
+        FCITX_ASSERT(ic->inputPanel().auxUp().toString() == "V ni'");
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        config.setValueByPath("InputScheme", "Full Pinyin");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+
+#endif // OXPINYIN_ENGLISH_INPUT_MODE
+
 } // namespace
 
 int main() {
@@ -962,6 +1485,20 @@ int main() {
     testUnmappedPunctPassthrough(&instance);
     testPunctuationMidComposition(&instance);
     testPunctuationDismissesPrediction(&instance);
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // testEnglishFrequencyOrder must run before any test that trains an
+    // English word (see its comment).
+    testEnglishFrequencyOrder(&instance);
+    testEnglishTypeCommitAndExit(&instance);
+    testEnglishEnterLearnsAcrossReset(&instance);
+    testEnglishSpaceCursorCommit(&instance);
+    testEnglishEscapeBackspaceExit(&instance);
+    testEnglishUppercaseEntry(&instance);
+    testEnglishSymbolSwitchMidComposition(&instance);
+    testEnglishPaging(&instance);
+    testEnglishConfigToggle(&instance);
+    testEnglishDoublePinyinTrigger(&instance);
+#endif
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
     instance.exec();

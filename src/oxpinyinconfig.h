@@ -74,6 +74,10 @@ FCITX_CONFIGURATION(
     Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
     Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
                               false};
+    // Upstream gsettings english-input-mode, default true.  Inert unless
+    // the addon was built with ENABLE_ENGLISH_INPUT_MODE.
+    Option<bool> englishInputMode{this, "EnglishInputMode",
+                                  _("English input mode"), true};
     // No full-width option: fcitx5's global `fullwidth` module owns that
     // session-wide, the way fcitx5-chewing leaves it alone.
     Option<bool> chinesePunctuation{this, "ChinesePunctuation",

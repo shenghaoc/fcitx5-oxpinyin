@@ -8,6 +8,11 @@
 #include "oxpinyinconfig.h"
 #include "punctuation.h"
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+#include "englishdatabase.h"
+#include "englisheditor.h"
+#endif
+
 #include <fcitx-config/rawconfig.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
@@ -54,6 +59,12 @@ public:
 
     const OxpinyinConfig &config() const { return config_; }
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // Null when the word database could not be opened; English mode is
+    // disabled then (the triggers check for it).
+    EnglishDatabase *englishDatabase() { return englishDb_.get(); }
+#endif
+
 private:
     friend class OxpinyinState;
 
@@ -67,6 +78,9 @@ private:
     OxpinyinConfig config_;
     OxpinyinInputScheme lastAppliedScheme_ = OxpinyinInputScheme::FullPinyin;
     std::unique_ptr<pinyin_context_t, decltype(&pinyin_fini)> context_;
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    std::unique_ptr<EnglishDatabase> englishDb_;
+#endif
 };
 
 /*
@@ -88,6 +102,14 @@ private:
  * holds predicted next-word candidates from the engine's bigram model.
  * Selecting a prediction commits it and re-predicts (chain); typing a
  * pinyin key leaves prediction and starts a fresh composition.
+ *
+ * English input mode (compile-time optional): englishMode_ dispatches
+ * every key to the self-contained EnglishEditor, entered by the upstream
+ * PYPPinyinEngine triggers (v / an uppercase letter on an empty buffer,
+ * or an English symbol mid-composition, which carries the typed pinyin
+ * along) and left when a consumed key empties the editor's text.  The
+ * editor owns its own buffer/lookup state; buffer_/cursor_/predicting_
+ * stay untouched while it is active.
  */
 class OxpinyinState final : public InputContextProperty {
 public:
@@ -107,6 +129,11 @@ public:
 
     pinyin_instance_t *instance() { return instance_.get(); }
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // Candidate click/selection path for English words (global index).
+    void englishSelectCandidate(size_t index);
+#endif
+
 private:
     friend class OxpinyinCandidateWord;
     friend class OxpinyinPredictedWord;
@@ -114,6 +141,16 @@ private:
 
     // Candidate-list interaction while composing; true when consumed.
     bool handleCandidateKey(KeyEvent &keyEvent);
+
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // English mode entry triggers (PYPPinyinEngine.cc); true when the
+    // event was taken over (consumed or deliberately passed through).
+    bool handleEnglishTrigger(KeyEvent &keyEvent);
+
+    // Leave English mode and clear the editor (engine reset / scheme
+    // switch); no-op when inactive.
+    void exitEnglish();
+#endif
 
     // Key handling in the Predicting state; true when consumed.
     bool handlePredictingKey(KeyEvent &keyEvent);
@@ -156,6 +193,13 @@ private:
     // Phase 5: prediction state
     bool predicting_ = false;
     std::string lastCommitted_; // context for re-prediction chains
+
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // English input mode state; english_ is null when the database is
+    // unavailable (triggers stay inert then).
+    std::unique_ptr<EnglishEditor> english_;
+    bool englishMode_ = false;
+#endif
 };
 
 class OxpinyinEngineFactory final : public AddonFactory {

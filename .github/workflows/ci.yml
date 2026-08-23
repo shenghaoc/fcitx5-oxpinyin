@@ -49,9 +49,11 @@ jobs:
           # No fcitx5-chinese-addons: punctuation is internal now, and
           # full-width is delegated to fcitx5's own global fullwidth
           # module. The addon must load with neither installed.
+          # sqlite provides both libsqlite3 and the CLI that builds
+          # english.db (gawk comes with base-devel).
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
             extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5
+            libpinyin fcitx5 sqlite
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,3 +65,11 @@ jobs:
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
           cmake --build build
           ctest --test-dir build --output-on-failure
+      - name: Build and test without English input mode
+        run: |
+          cmake -B build-noeng -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_ENGLISH_INPUT_MODE=OFF \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build-noeng
+          ctest --test-dir build-noeng --output-on-failure

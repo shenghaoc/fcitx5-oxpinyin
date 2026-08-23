@@ -135,6 +135,28 @@ const KeyList &selectionKeys() {
     return keys;
 }
 
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+std::filesystem::path resolveEnglishSystemDb() {
+    // Same resolution order as the engine data: env seam first, then the
+    // compiled-in install location, then fcitx StandardPaths.
+    if (const char *env = std::getenv("OXPINYIN_ENGLISH_SYSTEM_DB");
+        env && *env) {
+        return env;
+    }
+    if (std::filesystem::exists(OXPINYIN_COMPILED_ENGLISH_DB)) {
+        return OXPINYIN_COMPILED_ENGLISH_DB;
+    }
+    if (auto located = StandardPaths::global().locate(
+            StandardPathsType::PkgData, "oxpinyin/db/english.db");
+        !located.empty()) {
+        return located;
+    }
+    // EnglishDatabase::open fails closed on a missing file; return the
+    // compiled-in path so the warning names the expected location.
+    return OXPINYIN_COMPILED_ENGLISH_DB;
+}
+#endif
+
 } // namespace
 
 /*
@@ -201,6 +223,20 @@ OxpinyinEngine::OxpinyinEngine(Instance *instance)
                "interpolation2.text)";
         return;
     }
+
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // The English word database is engine-wide (shared by all input
+    // contexts, like upstream's singleton); its user half lives next to
+    // the engine's user data.
+    const auto englishSystemDb = resolveEnglishSystemDb();
+    englishDb_ = std::make_unique<EnglishDatabase>(&instance_->eventLoop());
+    if (!englishDb_->open(englishSystemDb.string(),
+                          (userDir / "english-user.db").string())) {
+        OXPINYIN_ERROR() << "can't open English word list database "
+                         << englishSystemDb << "; English input mode disabled";
+        englishDb_.reset();
+    }
+#endif
 
     instance_->inputContextManager().registerProperty("oxpinyinstate",
                                                       &factory_);
@@ -327,20 +363,29 @@ void OxpinyinEngine::applyConfig() {
     lastAppliedScheme_ = scheme;
 
     if (factory_.registered()) {
-        instance_->inputContextManager().foreach([this, schemeChanged](
-                                                     InputContext *ic) {
-            auto *st = state(ic);
-            if (!st->composing() || instance_->inputMethod(ic) != "oxpinyin") {
+        instance_->inputContextManager().foreach(
+            [this, schemeChanged](InputContext *ic) {
+                auto *st = state(ic);
+                bool active = st->composing();
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+                active = active || st->englishMode_;
+#endif
+                if (!active || instance_->inputMethod(ic) != "oxpinyin") {
+                    return true;
+                }
+                if (schemeChanged) {
+                // Never re-decode a buffer typed under another scheme;
+                // the scheme also selects the English trigger set, so a
+                // live English session is dropped with it.
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+                    st->exitEnglish();
+#endif
+                    st->resetState();
+                } else if (st->composing()) {
+                    st->refresh();
+                }
                 return true;
-            }
-            if (schemeChanged) {
-                // Never re-decode a buffer typed under another scheme.
-                st->resetState();
-            } else {
-                st->refresh();
-            }
-            return true;
-        });
+            });
     }
 }
 
@@ -355,6 +400,11 @@ OxpinyinState::OxpinyinState(OxpinyinEngine *engine, InputContext *ic)
         return;
     }
     instance_.reset(pinyin_alloc_instance(engine->context()));
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    if (engine->englishDatabase()) {
+        english_ = std::make_unique<EnglishEditor>(engine, ic);
+    }
+#endif
 }
 
 OxpinyinState::~OxpinyinState() = default;
@@ -382,6 +432,23 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         this->keyEvent(keyEvent);
         return;
     }
+
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // English mode owns every key until a consumed key leaves the
+    // editor's text empty (the upstream MODE_INIT exit rule: Escape, a
+    // commit, or backspacing out).  Unconsumed keys — modifier combos —
+    // pass to the client, as upstream's FallbackEditor rejects them too.
+    if (englishMode_ && english_) {
+        if (english_->processKeyEvent(keyEvent.key().sym(),
+                                      keyEvent.rawKey().states())) {
+            if (!english_->active()) {
+                englishMode_ = false;
+            }
+            keyEvent.filterAndAccept();
+        }
+        return;
+    }
+#endif
 
     if (ic_->inputPanel().candidateList() && handleCandidateKey(keyEvent)) {
         keyEvent.filterAndAccept();
@@ -411,6 +478,11 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
     }
 
     if (key.isSimple()) {
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+        if (handleEnglishTrigger(keyEvent)) {
+            return;
+        }
+#endif
         const auto c = static_cast<char>(key.sym() & 0xff);
         if (acceptChar(c)) {
             buffer_.push_back(c);
@@ -526,6 +598,87 @@ bool OxpinyinState::handleCandidateKey(KeyEvent &keyEvent) {
 
     return false;
 }
+
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+bool OxpinyinState::handleEnglishTrigger(KeyEvent &keyEvent) {
+    if (!english_ || !*engine_->config().englishInputMode) {
+        return false;
+    }
+    const auto scheme = engine_->config().inputScheme.value();
+    const bool doublePinyin = doublePinyinValue(scheme) > 0;
+    // Upstream wires English mode into the pinyin engine only; the
+    // bopomofo engine never enters it, so the zhuyin schemes don't here.
+    if (!doublePinyin && scheme != OxpinyinInputScheme::FullPinyin) {
+        return false;
+    }
+
+    const KeySym sym = keyEvent.key().sym();
+    const bool capsLock = keyEvent.rawKey().states().test(KeyState::CapsLock);
+
+    if (buffer_.empty()) {
+        // PYPPinyinEngine.cc empty-text entries: v (full pinyin), V
+        // (double pinyin, not under Caps Lock), or an uppercase letter
+        // (full pinyin, not under Caps Lock) which seeds "v" and lets the
+        // editor insert the letter itself.
+        bool enter = false;
+        if (!doublePinyin && sym == FcitxKey_v) {
+            enter = true;
+        } else if (doublePinyin && sym == FcitxKey_V && !capsLock) {
+            enter = true;
+        } else if (!doublePinyin && sym >= FcitxKey_A && sym <= FcitxKey_Z &&
+                   !capsLock) {
+            english_->setText("v", 1);
+            enter = true;
+        }
+        if (!enter) {
+            return false;
+        }
+        englishMode_ = true;
+        // Upstream falls through to the editor with the same key event.
+        if (english_->processKeyEvent(sym, keyEvent.rawKey().states())) {
+            if (!english_->active()) {
+                englishMode_ = false;
+            }
+            keyEvent.filterAndAccept();
+        }
+        return true;
+    }
+
+    // Mid-composition symbol switch: carry the typed pinyin into English
+    // mode as v/V + buffer + symbol (upstream inserts the symbol at the
+    // editing cursor; ours is always at the buffer end).
+    if (!isEnglishSwitchSymbol(static_cast<char>(sym & 0xff), doublePinyin)) {
+        return false;
+    }
+    std::string text = doublePinyin ? "V" : "v";
+    text += buffer_;
+    text += static_cast<char>(sym & 0xff);
+    const size_t cursor = text.size();
+    resetState(); // upstream: setText("", 0) on the init editor
+    englishMode_ = true;
+    english_->setText(std::move(text), cursor);
+    english_->updateAll();
+    keyEvent.filterAndAccept();
+    return true;
+}
+
+void OxpinyinState::exitEnglish() {
+    if (english_) {
+        english_->reset();
+    }
+    englishMode_ = false;
+}
+
+void OxpinyinState::englishSelectCandidate(size_t index) {
+    if (!englishMode_ || !english_) {
+        return;
+    }
+    english_->selectCandidate(index);
+    if (!english_->active()) {
+        englishMode_ = false;
+    }
+}
+#endif
 
 void OxpinyinState::selectCandidate(size_t index) {
     guint count = 0;
@@ -909,6 +1062,11 @@ std::string OxpinyinState::commitSentence() {
 
 void OxpinyinState::reset() {
     punct_.reset();
+#ifdef OXPINYIN_ENGLISH_INPUT_MODE
+    // Upstream PinyinEngine::reset resets every editor and returns the
+    // input mode to MODE_INIT.
+    exitEnglish();
+#endif
     resetState();
 }
 
