@@ -4,16 +4,23 @@
  *
  * Ported from ibus-libpinyin src/PYEnglishDatabase.cc.  Every SQL string
  * is byte-identical to upstream, including the printf-style "%s"/"%f"
- * interpolation (no parameter binding upstream, none here: a divergence
- * would change which inputs fail).  Differences are documented inline.
+ * interpolation (no parameter binding upstream, none there: a divergence
+ * would change which inputs fail), except listWords: its prefix is raw
+ * typed text, so it is bound as a parameter with GLOB metacharacters
+ * bracket-escaped instead of interpolated.  Differences are documented
+ * inline.
  */
 #include "englishdatabase.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/log.h>
@@ -98,8 +105,16 @@ bool EnglishDatabase::createDatabase(const char *filename) {
 
     const auto dirname = std::filesystem::path(filename).parent_path();
     if (!dirname.empty()) {
-        // g_mkdir_with_parents (dirname, 0700)
-        std::filesystem::create_directories(dirname, ec);
+        // g_mkdir_with_parents (dirname, 0700): std::filesystem's defaults
+        // are umask-dependent, so create every missing component explicitly
+        // private to the user.
+        std::filesystem::path created;
+        for (const auto &part : dirname) {
+            created /= part;
+            if (::mkdir(created.c_str(), 0700) != 0 && errno != EEXIST) {
+                return false;
+            }
+        }
     }
 
     sqlite3 *tmpDb = nullptr;
@@ -163,13 +178,44 @@ bool EnglishDatabase::listWords(const char *prefix,
     words.clear();
 
     /* list words */
-    const char *SQL_DB_LIST =
-        "SELECT word FROM ( "
-        "SELECT * FROM english UNION ALL SELECT * FROM userdb.english) "
-        " WHERE word GLOB \"%s*\" GROUP BY word ORDER BY SUM(freq) DESC;";
-    sql_ = formatSql(SQL_DB_LIST, prefix);
+    // Documented divergence: the prefix is raw typed text, so instead of
+    // upstream's printf interpolation it is bound as a parameter, with
+    // GLOB metacharacters bracket-escaped to match literally; the
+    // trailing "*" keeps the prefix-match semantics.
+    sql_ = "SELECT word FROM ( "
+           "SELECT * FROM english UNION ALL SELECT * FROM userdb.english) "
+           " WHERE word GLOB ? GROUP BY word ORDER BY SUM(freq) DESC;";
+    std::string pattern;
+    pattern.reserve(std::strlen(prefix) * 4 + 1);
+    for (const char *p = prefix; *p; ++p) {
+        switch (*p) {
+        case '*':
+            pattern += "[*]";
+            break;
+        case '?':
+            pattern += "[?]";
+            break;
+        case '[':
+            pattern += "[[]";
+            break;
+        case ']':
+            pattern += "[]]";
+            break;
+        default:
+            pattern += *p;
+            break;
+        }
+    }
+    pattern += '*';
+
     if (sqlite3_prepare_v2(sqlite_, sql_.c_str(), -1, &stmt, nullptr) !=
         SQLITE_OK) {
+        return false;
+    }
+    if (sqlite3_bind_text(stmt, 1, pattern.c_str(),
+                          static_cast<int>(pattern.size()),
+                          SQLITE_TRANSIENT) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
         return false;
     }
 
@@ -245,7 +291,8 @@ bool EnglishDatabase::executeSQL(sqlite3 *sqlite) {
     char *errmsg = nullptr;
     if (sqlite3_exec(sqlite, sql_.c_str(), nullptr, nullptr, &errmsg) !=
         SQLITE_OK) {
-        FCITX_WARN() << errmsg << ": " << sql_;
+        // sql_ interpolates user-typed words; log the SQLite message only.
+        FCITX_WARN() << (errmsg ? errmsg : "unknown sqlite error");
         sqlite3_free(errmsg);
         return false;
     }

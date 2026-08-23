@@ -63,7 +63,7 @@ bool isEnglishSwitchSymbol(char c, bool doublePinyin) {
     if (EnglishSymbols.find(c) != std::string_view::npos) {
         return true;
     }
-    /* For full pinyin, "'" is used. */
+    /* For double pinyin, "'" is used. */
     if (doublePinyin && c == '\'') {
         return true;
     }
@@ -71,7 +71,7 @@ bool isEnglishSwitchSymbol(char c, bool doublePinyin) {
     if (!kSquareBracketPage && (c == '[' || c == ']')) {
         return true;
     }
-    /* For double pinyin, ";" is used. */
+    /* For full pinyin, ";" is used. */
     if (!doublePinyin && c == ';') {
         return true;
     }

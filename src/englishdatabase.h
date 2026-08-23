@@ -34,7 +34,8 @@ public:
     bool open(const std::string &systemDb, const std::string &userDb);
 
     // Words matching the prefix, ordered by summed system+user frequency
-    // (upstream's GLOB query, byte-identical SQL).
+    // (upstream's GLOB query, with the prefix bound as a parameter and
+    // GLOB metacharacters escaped instead of interpolated).
     bool listWords(const char *prefix, std::vector<std::string> &words);
 
     // Add delta to the word's user frequency, inserting it on first use.
