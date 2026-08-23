@@ -128,11 +128,8 @@ jobs:
           else
             dnf install -y gcc-c++ clang cmake ninja-build git \
               extra-cmake-modules fmt-devel libuv-devel libuuid-devel \
-              zlib-devel gettext boost-devel rust cargo openssl-devel \
+              zlib-devel gettext boost-devel rust cargo rust-cargo-c \
               fcitx5-chinese-addons
-            # Fedora does not package cargo-c; install the cargo subcommand
-            # into $CARGO_HOME/bin where cargo finds subcommands itself.
-            cargo install cargo-c --locked
           fi
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
