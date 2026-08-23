@@ -90,6 +90,8 @@ public:
     void keyEvent(KeyEvent &keyEvent);
     void reset();
 
+    bool composing() const { return !buffer_.empty(); }
+
     pinyin_instance_t *instance() { return instance_.get(); }
 
 private:
