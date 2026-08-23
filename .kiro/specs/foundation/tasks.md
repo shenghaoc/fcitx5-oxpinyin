@@ -58,7 +58,28 @@
 - [ ] Gates: local gcc+clang+format+ctest+ASan green; commit; push; CI
       green; report + STOP.
 
-## Phase 3 — preedit/aux + config (pending GO)
+## Phase 3 — preedit/aux + config (IN PROGRESS — local gates green, PR CI pending)
+
+- [x] Aux-text ownership re-verified from the capi impl body (libc malloc,
+      freed via ownedString); cursor param is a byte-offset marker, stripped
+      for display.
+- [x] Config: OxpinyinConfig (inputScheme 16 entries from pinyin.h values
+      only; PageSize 1-10; incomplete + 10 fuzzy + 6 correction toggles),
+      getConfig/setConfig/reloadConfig + safeSaveAsIni/readAsIni; apply does
+      pinyin_set_options (DYNAMIC_ADJUST | USE_DIVIDED_TABLE |
+      USE_RESPLIT_TABLE base) + scheme setters; scheme change resets all
+      live compositions.
+- [x] Scheme-aware parse (full/double/chewings dispatch) and key acceptance
+      (zhuyin via pinyin_in_chewing_keyboard; double accepts ';'); the
+      first-key guard skips zhuyin (a lone initial must keep composing).
+- [x] Client preedit (cursor pinned at 0, highlight on the aux composing
+      span) when capabilityFlags allow; panel fallback keeps the sentence
+      preedit with the syllable aux in auxDown. Both confs Configurable.
+- [x] Tests: aux/preedit reflection (no '|' leak), pageSize setConfig
+      round-trip + live candidate-list page size, fuzzy round-trip, zhuyin
+      scheme switch (standard layout a8) + back to full pinyin.
+- [ ] Gates: local all green; branch + PR; both CI workflows green; STOP
+      report.
 
 Aux-text preedit, client-vs-panel, FCITX_CONFIGURATION (page size, scheme,
 fuzzy) → set_options/scheme setters; harness tests for scheme switch +

@@ -1,5 +1,6 @@
 configure_file(testdir.h.in testdir.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 add_subdirectory(addon)
 add_subdirectory(inputmethod)

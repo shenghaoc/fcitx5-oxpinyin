@@ -5,16 +5,20 @@
 #include "testdir.h"
 #include "testfrontend_public.h"
 
+#include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/macros.h>
 #include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/testing.h>
 #include <fcitx/addonmanager.h>
+#include <fcitx/candidatelist.h>
 #include <fcitx/inputmethodgroup.h>
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+
+#include "oxpinyinconfig.h"
 
 using namespace fcitx;
 
@@ -209,6 +213,143 @@ void testCandidatesAndPassthrough(Instance *instance) {
     });
 }
 
+// Phase 3: the aux-text getter feeds the display — after typing, the
+// panel (or client) shows the sentence and the typed syllables appear in
+// the aux area; no cursor marker leaks into the display.
+void testAuxPreedit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        const auto client = ic->inputPanel().clientPreedit().toString();
+        FCITX_ASSERT(!preedit.empty() || !client.empty());
+        const auto aux = ic->inputPanel().auxDown().toString();
+        FCITX_ASSERT(!aux.empty());
+        FCITX_ASSERT(aux.find('|') == std::string::npos);
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        instance->deactivate();
+    });
+}
+
+// Phase 3: setConfig propagates live — page size honors a new value, a
+// fuzzy toggle round-trips through getConfig.
+void testConfigApply(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("PageSize", "3");
+        oxpinyin->setConfig(config);
+        {
+            const auto *const current =
+                static_cast<const OxpinyinConfig *>(oxpinyin->getConfig());
+            FCITX_ASSERT(*current->pageSize == 3);
+        }
+
+        for (const auto c : std::string("shi")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        const auto common =
+            std::dynamic_pointer_cast<CommonCandidateList>(list);
+        FCITX_ASSERT(common && common->pageSize() == 3);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        config.setValueByPath("FuzzyCCh", "True");
+        oxpinyin->setConfig(config);
+        {
+            const auto *const current =
+                static_cast<const OxpinyinConfig *>(oxpinyin->getConfig());
+            FCITX_ASSERT(*current->fuzzyCCh);
+        }
+        config.setValueByPath("FuzzyCCh", "False");
+        config.setValueByPath("PageSize", "5");
+        oxpinyin->setConfig(config);
+        {
+            const auto *const current =
+                static_cast<const OxpinyinConfig *>(oxpinyin->getConfig());
+            FCITX_ASSERT(!*current->fuzzyCCh);
+            FCITX_ASSERT(*current->pageSize == 5);
+        }
+
+        instance->deactivate();
+    });
+}
+
+// Phase 3: scheme switch drives the parse mode — zhuyin parses a bopomofo
+// key sequence (standard layout: a=ㄇ, 8=ㄚ), full pinyin still works
+// after switching back.
+void testSchemeSwitchZhuyin(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("InputScheme", "Standard Zhuyin");
+        oxpinyin->setConfig(config);
+        {
+            const auto *const current =
+                static_cast<const OxpinyinConfig *>(oxpinyin->getConfig());
+            FCITX_ASSERT(current->inputScheme.value() ==
+                         OxpinyinInputScheme::ZhuyinStandard);
+        }
+
+        // ㄇㄚ under the standard layout; digits outside the current page
+        // are not selection keys while composing in zhuyin mode ('8' is a
+        // bopomofo key here).
+        for (const auto c : std::string("a8")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!ic->inputPanel().auxDown().toString().empty() ||
+                     !ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        // Back to full pinyin.
+        config.setValueByPath("InputScheme", "Full Pinyin");
+        oxpinyin->setConfig(config);
+        for (const auto c : std::string("ma")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!ic->inputPanel().auxDown().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+
+        instance->deactivate();
+    });
+}
+
 } // namespace
 
 int main() {
@@ -233,6 +374,9 @@ int main() {
     testBackspace(&instance);
     testEscape(&instance);
     testCandidatesAndPassthrough(&instance);
+    testAuxPreedit(&instance);
+    testConfigApply(&instance);
+    testSchemeSwitchZhuyin(&instance);
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
     instance.exec();
