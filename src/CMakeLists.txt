@@ -1,4 +1,4 @@
-add_fcitx5_addon(oxpinyin oxpinyin.cpp)
+add_fcitx5_addon(oxpinyin oxpinyin.cpp punctuation.cpp)
 set_target_properties(oxpinyin PROPERTIES PREFIX "")
 configure_file(oxpinyin_paths.h.in oxpinyin_paths.h)
 target_link_libraries(oxpinyin Fcitx5::Core Fcitx5::Config PkgConfig::ENGINE_PKG)

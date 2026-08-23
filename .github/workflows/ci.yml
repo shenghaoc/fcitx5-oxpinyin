@@ -46,9 +46,12 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          # No fcitx5-chinese-addons: punctuation is internal now, and
+          # full-width is delegated to fcitx5's own global fullwidth
+          # module. The addon must load with neither installed.
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
             extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5 fcitx5-chinese-addons
+            libpinyin fcitx5
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

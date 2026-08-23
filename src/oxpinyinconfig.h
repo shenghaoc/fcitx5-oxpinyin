@@ -73,7 +73,11 @@ FCITX_CONFIGURATION(
                               false};
     Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
     Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
-                              false};);
+                              false};
+    // No full-width option: fcitx5's global `fullwidth` module owns that
+    // session-wide, the way fcitx5-chewing leaves it alone.
+    Option<bool> chinesePunctuation{this, "ChinesePunctuation",
+                                    _("Use Chinese punctuation"), true};);
 
 } // namespace fcitx
 

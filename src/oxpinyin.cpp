@@ -373,12 +373,13 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             keyEvent.filterAndAccept();
             return;
         }
-        const auto key = keyEvent.key();
-        if (key.isSimple() && acceptChar(static_cast<char>(key.sym() & 0xff))) {
-            // Prediction was dismissed: process this key as the first key of
-            // a fresh composition through the ordinary key path.
-            this->keyEvent(keyEvent);
-        }
+        // Prediction was dismissed. Re-dispatch EVERY unconsumed key
+        // through the ordinary path: a pinyin key starts a fresh
+        // composition, and punctuation still reaches the punctuation
+        // module instead of being dropped. Every non-consuming exit of
+        // handlePredictingKey clears predicting_ first, so this cannot
+        // recurse back into this branch.
+        this->keyEvent(keyEvent);
         return;
     }
 
@@ -388,6 +389,26 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
     }
 
     const auto key = keyEvent.key(); // normalized form
+
+    // Space commits the composition. Handled before isSimple(), which
+    // spans FcitxKey_space..FcitxKey_asciitilde and would otherwise
+    // swallow it first. With no composition the key passes through, but
+    // still goes through the module so it is recorded as the previous
+    // committed char — upstream does the same, and the
+    // comma/period-after-digit rule reads it.
+    if (key.check(FcitxKey_space)) {
+        if (composing()) {
+            selectCandidate(0);
+            keyEvent.filterAndAccept();
+            return;
+        }
+        if (auto result = punct_.process(
+                FcitxKey_space, *engine_->config().chinesePunctuation)) {
+            ic_->commitString(*result);
+            keyEvent.filterAndAccept();
+        }
+        return;
+    }
 
     if (key.isSimple()) {
         const auto c = static_cast<char>(key.sym() & 0xff);
@@ -403,21 +424,26 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             if (!zhuyin && buffer_.size() == 1 &&
                 pinyin_get_parsed_input_length(instance_.get()) == 0) {
                 resetState();
+                if (auto result = punct_.process(
+                        key.sym(), *engine_->config().chinesePunctuation)) {
+                    ic_->commitString(*result);
+                    keyEvent.filterAndAccept();
+                }
                 return;
             }
             keyEvent.filterAndAccept();
             updateUI();
             return;
         }
-        return; // other simple keys pass through in v1
-    }
-
-    if (key.check(FcitxKey_space)) {
-        if (buffer_.empty()) {
-            return;
+        // Non-composing key: commit any existing composition first.
+        if (composing()) {
+            commitSentence();
         }
-        selectCandidate(0);
-        keyEvent.filterAndAccept();
+        if (auto result = punct_.process(
+                key.sym(), *engine_->config().chinesePunctuation)) {
+            ic_->commitString(*result);
+            keyEvent.filterAndAccept();
+        }
         return;
     }
 
@@ -425,21 +451,8 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         if (buffer_.empty()) {
             return;
         }
-        const auto decoded = sentence();
-        const bool fromSentence = !decoded.empty();
-        auto committed = decoded;
-        if (!fromSentence) {
-            committed = buffer_;
-        } else if (parsedLen_ < buffer_.size()) {
-            committed += buffer_.substr(parsedLen_);
-        }
-        ic_->commitString(committed);
-        if (fromSentence) {
-            pinyin_train(instance_.get(), 0);
-            pinyin_remember_user_input(instance_.get(), decoded.c_str(), -1);
-        }
+        auto committed = commitSentence();
         keyEvent.filterAndAccept();
-        resetState();
         if (*engine_->config().predictWords) {
             enterPredicting(committed);
         }
@@ -627,7 +640,17 @@ bool OxpinyinState::acceptChar(char c) const {
         return accepted;
     }
     default:
-        return (c >= 'a' && c <= 'z') || c == '\'';
+        // The apostrophe is a syllable separator only INSIDE an existing
+        // composition. Typed on its own it is punctuation, and belongs to
+        // the punctuation module — upstream draws the same line, with
+        // PinyinEditor::processPunct returning FALSE on an empty buffer so
+        // the key falls through to FallbackEditor. Asking the engine
+        // instead (does a lone "'" parse to nothing?) is not portable:
+        // oxpinyin parses it to length 0, libpinyin does not.
+        if (c == '\'') {
+            return !buffer_.empty();
+        }
+        return c >= 'a' && c <= 'z';
     }
 }
 
@@ -863,7 +886,31 @@ void OxpinyinState::updateUI() {
     ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 
-void OxpinyinState::reset() { resetState(); }
+std::string OxpinyinState::commitSentence() {
+    if (!composing()) {
+        return {};
+    }
+    const auto decoded = sentence();
+    const bool fromSentence = !decoded.empty();
+    auto committed = decoded;
+    if (!fromSentence) {
+        committed = buffer_;
+    } else if (parsedLen_ < buffer_.size()) {
+        committed += buffer_.substr(parsedLen_);
+    }
+    ic_->commitString(committed);
+    if (fromSentence) {
+        pinyin_train(instance_.get(), 0);
+        pinyin_remember_user_input(instance_.get(), decoded.c_str(), -1);
+    }
+    resetState();
+    return committed;
+}
+
+void OxpinyinState::reset() {
+    punct_.reset();
+    resetState();
+}
 
 void OxpinyinState::resetState() {
     // pinyin_reset is the parse-path reset: the constraint store, the
