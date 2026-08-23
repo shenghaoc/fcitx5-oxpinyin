@@ -119,37 +119,25 @@ jobs:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
     steps:
+      # The addon builds against the DISTRO fcitx5 (arch ships headers in the
+      # fcitx5 package; fedora needs fcitx5-devel) — which is also what makes
+      # the harness resolve the punctuation hard dependency from
+      # fcitx5-chinese-addons. A from-source fcitx5 build would need
+      # from-source chinese-addons too (no punctuation-only build exists).
       - name: Install dependencies
         run: |
           if command -v pacman >/dev/null; then
             pacman -Syu --noconfirm base-devel clang cmake ninja git \
               extra-cmake-modules fmt libuv boost rust cargo-c \
-              fcitx5-chinese-addons
+              fcitx5 fcitx5-chinese-addons
           else
             dnf install -y gcc-c++ clang cmake ninja-build git \
               extra-cmake-modules fmt-devel libuv-devel libuuid-devel \
               zlib-devel gettext boost-devel rust cargo rust-cargo-c \
-              fcitx5-chinese-addons
+              fcitx5-devel fcitx5-chinese-addons
           fi
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Checkout fcitx5
-        uses: actions/checkout@v4
-        with:
-          repository: fcitx/fcitx5
-          path: fcitx5
-      - name: Cache fcitx5 data files
-        uses: actions/cache@v4
-        with:
-          path: 'fcitx5/**/*.tar.*'
-          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt') }}
-      - name: Build and Install fcitx5
-        uses: fcitx/github-actions@cmake
-        with:
-          path: fcitx5
-          cmake-option: >-
-            -DENABLE_KEYBOARD=Off -DENABLE_X11=Off -DENABLE_WAYLAND=Off -DENABLE_ENCHANT=Off
-            -DENABLE_DBUS=Off -DENABLE_SERVER=Off -DENABLE_EMOJI=Off -DUSE_SYSTEMD=Off
       - name: Checkout pinned oxpinyin
         uses: actions/checkout@v4
         with:
@@ -194,30 +182,14 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
+      # Distro fcitx5 like the build jobs (see the comment there).
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
             extra-cmake-modules fmt libuv boost rust cargo-c \
-            fcitx5-chinese-addons
+            fcitx5 fcitx5-chinese-addons
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Checkout fcitx5
-        uses: actions/checkout@v4
-        with:
-          repository: fcitx/fcitx5
-          path: fcitx5
-      - name: Cache fcitx5 data files
-        uses: actions/cache@v4
-        with:
-          path: 'fcitx5/**/*.tar.*'
-          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt') }}
-      - name: Build and Install fcitx5
-        uses: fcitx/github-actions@cmake
-        with:
-          path: fcitx5
-          cmake-option: >-
-            -DENABLE_KEYBOARD=Off -DENABLE_X11=Off -DENABLE_WAYLAND=Off -DENABLE_ENCHANT=Off
-            -DENABLE_DBUS=Off -DENABLE_SERVER=Off -DENABLE_EMOJI=Off -DUSE_SYSTEMD=Off
       - name: Checkout pinned oxpinyin
         uses: actions/checkout@v4
         with:
