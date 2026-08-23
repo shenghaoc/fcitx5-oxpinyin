@@ -3,18 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Ported from ibus-libpinyin src/PYEnglishDatabase.cc.  Every SQL string
- * is byte-identical to upstream, including the printf-style "%s"/"%f"
- * interpolation (no parameter binding upstream, none there: a divergence
- * would change which inputs fail), except listWords: its prefix is raw
- * typed text, so it is bound as a parameter with GLOB metacharacters
- * bracket-escaped instead of interpolated.  Differences are documented
- * inline.
+ * is byte-identical to upstream, except where values are raw typed text
+ * (listWords' prefix and the user-word lookup/write statements): those
+ * bind parameters instead of upstream's printf-style "%s"/"%f"
+ * interpolation.  Differences are documented inline.
  */
 #include "englishdatabase.h"
 
 #include <algorithm>
 #include <cerrno>
-#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -31,19 +28,6 @@ namespace {
 
 // DB_BACKUP_TIMEOUT (seconds -> microseconds for the fcitx event loop).
 constexpr uint64_t kBackupTimeout = 60ULL * 1000000ULL;
-
-// PY::String::printf equivalent: printf-format into a std::string.  Like
-// upstream (g_string_vprintf), "%f" is plain libc formatting.
-template <typename... Args>
-std::string formatSql(const char *fmt, Args... args) {
-    const int len = std::snprintf(nullptr, 0, fmt, args...);
-    if (len < 0) {
-        return {};
-    }
-    std::string result(static_cast<size_t>(len), '\0');
-    std::snprintf(result.data(), result.size() + 1, fmt, args...);
-    return result;
-}
 
 } // namespace
 
@@ -243,11 +227,15 @@ bool EnglishDatabase::getUserWordInfo(const char *word, bool &found,
     sqlite3_stmt *stmt = nullptr;
     found = false;
     /* get word info. */
-    const char *SQL_DB_SELECT =
-        "SELECT freq FROM userdb.english WHERE word = \"%s\";";
-    sql_ = formatSql(SQL_DB_SELECT, word);
+    // Divergence from upstream's printf interpolation: word is raw typed
+    // text, bound as a parameter.
+    sql_ = "SELECT freq FROM userdb.english WHERE word = ?;";
     if (sqlite3_prepare_v2(sqlite_, sql_.c_str(), -1, &stmt, nullptr) !=
         SQLITE_OK) {
+        return false;
+    }
+    if (sqlite3_bind_text(stmt, 1, word, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
         return false;
     }
     bool ok = false;
@@ -265,26 +253,42 @@ bool EnglishDatabase::getUserWordInfo(const char *word, bool &found,
 
 /* Update the freq with delta value. */
 bool EnglishDatabase::updateUserWord(const char *word, float freq) {
-    const char *SQL_DB_UPDATE =
-        "UPDATE userdb.english SET freq = \"%f\" WHERE word = \"%s\";";
-    sql_ = formatSql(SQL_DB_UPDATE, static_cast<double>(freq), word);
-    const bool retval = executeSQL(sqlite_);
-    if (retval) {
+    // Parameter-bound like getUserWordInfo; executeSQL() cannot bind.
+    sql_ = "UPDATE userdb.english SET freq = ?1 WHERE word = ?2;";
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(sqlite_, sql_.c_str(), -1, &stmt, nullptr) !=
+        SQLITE_OK) {
+        return false;
+    }
+    const bool ok =
+        sqlite3_bind_double(stmt, 1, static_cast<double>(freq)) == SQLITE_OK &&
+        sqlite3_bind_text(stmt, 2, word, -1, SQLITE_TRANSIENT) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    if (ok) {
         modified();
     }
-    return retval;
+    return ok;
 }
 
 /* Insert the word into user db with the initial freq. */
 bool EnglishDatabase::insertUserWord(const char *word, float freq) {
-    const char *SQL_DB_INSERT =
-        "INSERT INTO userdb.english (word, freq) VALUES (\"%s\", \"%f\");";
-    sql_ = formatSql(SQL_DB_INSERT, word, static_cast<double>(freq));
-    const bool retval = executeSQL(sqlite_);
-    if (retval) {
+    // Parameter-bound like getUserWordInfo; executeSQL() cannot bind.
+    sql_ = "INSERT INTO userdb.english (word, freq) VALUES (?1, ?2);";
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(sqlite_, sql_.c_str(), -1, &stmt, nullptr) !=
+        SQLITE_OK) {
+        return false;
+    }
+    const bool ok =
+        sqlite3_bind_text(stmt, 1, word, -1, SQLITE_TRANSIENT) == SQLITE_OK &&
+        sqlite3_bind_double(stmt, 2, static_cast<double>(freq)) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    if (ok) {
         modified();
     }
-    return retval;
+    return ok;
 }
 
 // Divergence from upstream: a failed lookup is distinguished from a
