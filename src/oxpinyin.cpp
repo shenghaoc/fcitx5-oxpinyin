@@ -490,7 +490,15 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
     // comma/period-after-digit rule reads it.
     if (key.check(FcitxKey_space)) {
         if (composing()) {
-            selectCandidate(0);
+            // Select the first displayed candidate, matching the digit path
+            // and the predicting handler: with uppercase input slot 0 is a
+            // Spell word, not pinyin-engine candidate 0.
+            if (const auto list = ic_->inputPanel().candidateList();
+                list && !list->empty()) {
+                list->candidate(0).select(ic_);
+            } else {
+                selectCandidate(0);
+            }
             keyEvent.filterAndAccept();
             return;
         }
