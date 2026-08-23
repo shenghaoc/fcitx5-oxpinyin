@@ -1,7 +1,7 @@
 add_fcitx5_addon(oxpinyin oxpinyin.cpp)
 set_target_properties(oxpinyin PROPERTIES PREFIX "")
 configure_file(oxpinyin_paths.h.in oxpinyin_paths.h)
-target_link_libraries(oxpinyin Fcitx5::Core Fcitx5::Config PkgConfig::OXPINYIN)
+target_link_libraries(oxpinyin Fcitx5::Core Fcitx5::Config PkgConfig::ENGINE_PKG)
 target_include_directories(oxpinyin PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(oxpinyin PRIVATE FCITX_GETTEXT_DOMAIN=\"fcitx5-oxpinyin\")
 fcitx5_add_i18n_definition(TARGETS oxpinyin)

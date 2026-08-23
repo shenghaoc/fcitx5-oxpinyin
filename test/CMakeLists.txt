@@ -10,14 +10,13 @@ target_link_libraries(testoxpinyin Fcitx5::Core Fcitx5::Module::TestFrontend)
 add_dependencies(testoxpinyin copy-addon copy-im)
 add_test(testoxpinyin testoxpinyin)
 
-# Pass configure-time engine data dirs through to the test when given
-# (-DOXPINYIN_SYSTEM_DATA_DIR=... / -DOXPINYIN_USER_DATA_DIR=...); the
-# environment variables always win at runtime.
-set(OXPINYIN_TEST_ENV "")
-if (OXPINYIN_SYSTEM_DATA_DIR)
-    list(APPEND OXPINYIN_TEST_ENV
-         "OXPINYIN_SYSTEM_DATA_DIR=${OXPINYIN_SYSTEM_DATA_DIR}")
+# Pass the engine data directory to the test as an environment variable;
+# the explicit -DOXPINYIN_SYSTEM_DATA_DIR=... override wins, otherwise
+# the ENGINE_SYSTEM_DATA_DIR resolved by the engine selector is used.
+if (NOT OXPINYIN_SYSTEM_DATA_DIR)
+    set(OXPINYIN_SYSTEM_DATA_DIR "${ENGINE_SYSTEM_DATA_DIR}")
 endif ()
+set(OXPINYIN_TEST_ENV "OXPINYIN_SYSTEM_DATA_DIR=${OXPINYIN_SYSTEM_DATA_DIR}")
 if (OXPINYIN_USER_DATA_DIR)
     list(APPEND OXPINYIN_TEST_ENV
          "OXPINYIN_USER_DATA_DIR=${OXPINYIN_USER_DATA_DIR}")
