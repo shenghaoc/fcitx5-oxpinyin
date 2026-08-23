@@ -138,7 +138,20 @@ bool EnglishDatabase::open(const std::string &systemDb,
     if (!isDatabaseExisted(systemDb.c_str())) {
         return false;
     }
-    if (!isDatabaseExisted(userDb.c_str()) && !createDatabase(userDb.c_str())) {
+    // Upstream conflates "missing" and "present but invalid" and unlinks
+    // either way.  Documented divergence: only an absent database is
+    // created fresh; one that exists but fails validation (unreadable,
+    // corrupt, version mismatch) is renamed to "<userdb>.bak" first, so
+    // learned words remain recoverable.
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(userDb, ec)) {
+        if (!isDatabaseExisted(userDb.c_str())) {
+            std::filesystem::rename(userDb, userDb + ".bak", ec);
+            if (ec || !createDatabase(userDb.c_str())) {
+                return false;
+            }
+        }
+    } else if (!createDatabase(userDb.c_str())) {
         return false;
     }
     /* cache the user db name. */
@@ -152,7 +165,12 @@ bool EnglishDatabase::open(const std::string &systemDb,
         sqlite_ = nullptr;
         return false;
     }
-    return loadUserDB();
+    if (!loadUserDB()) {
+        sqlite3_close(sqlite_);
+        sqlite_ = nullptr;
+        return false;
+    }
+    return true;
 }
 
 /* List the words in freq order. */
