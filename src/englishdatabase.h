@@ -38,13 +38,14 @@ public:
     // GLOB metacharacters escaped instead of interpolated).
     bool listWords(const char *prefix, std::vector<std::string> &words);
 
-    // Add delta to the word's user frequency, inserting it on first use.
+    // Add delta to the word's user frequency, inserting it on first use;
+    // false leaves the user db untouched (failed read or write).
     bool train(const char *word, float delta);
 
 private:
     bool isDatabaseExisted(const char *filename);
     bool createDatabase(const char *filename);
-    bool getUserWordInfo(const char *word, float &freq);
+    bool getUserWordInfo(const char *word, bool &found, float &freq);
     bool insertUserWord(const char *word, float freq);
     bool updateUserWord(const char *word, float freq);
     bool executeSQL(sqlite3 *sqlite);

@@ -235,9 +235,13 @@ bool EnglishDatabase::listWords(const char *prefix,
     return result == SQLITE_DONE;
 }
 
-/* Get the freq of user sqlite db. */
-bool EnglishDatabase::getUserWordInfo(const char *word, float &freq) {
+/* Get the freq of user sqlite db: returns true when the query ran,
+ * with found telling whether the word exists; false means the lookup
+ * itself failed (no conclusion about the word). */
+bool EnglishDatabase::getUserWordInfo(const char *word, bool &found,
+                                      float &freq) {
     sqlite3_stmt *stmt = nullptr;
+    found = false;
     /* get word info. */
     const char *SQL_DB_SELECT =
         "SELECT freq FROM userdb.english WHERE word = \"%s\";";
@@ -246,14 +250,17 @@ bool EnglishDatabase::getUserWordInfo(const char *word, float &freq) {
         SQLITE_OK) {
         return false;
     }
-    bool found = false;
-    if (sqlite3_step(stmt) == SQLITE_ROW &&
-        sqlite3_column_type(stmt, 0) == SQLITE_FLOAT) {
+    bool ok = false;
+    const int step = sqlite3_step(stmt);
+    if (step == SQLITE_ROW && sqlite3_column_type(stmt, 0) == SQLITE_FLOAT) {
         freq = static_cast<float>(sqlite3_column_double(stmt, 0));
         found = true;
+        ok = true;
+    } else if (step == SQLITE_DONE) {
+        ok = true;
     }
     sqlite3_finalize(stmt);
-    return found;
+    return ok;
 }
 
 /* Update the freq with delta value. */
@@ -262,7 +269,9 @@ bool EnglishDatabase::updateUserWord(const char *word, float freq) {
         "UPDATE userdb.english SET freq = \"%f\" WHERE word = \"%s\";";
     sql_ = formatSql(SQL_DB_UPDATE, static_cast<double>(freq), word);
     const bool retval = executeSQL(sqlite_);
-    modified();
+    if (retval) {
+        modified();
+    }
     return retval;
 }
 
@@ -272,19 +281,26 @@ bool EnglishDatabase::insertUserWord(const char *word, float freq) {
         "INSERT INTO userdb.english (word, freq) VALUES (\"%s\", \"%f\");";
     sql_ = formatSql(SQL_DB_INSERT, word, static_cast<double>(freq));
     const bool retval = executeSQL(sqlite_);
-    modified();
+    if (retval) {
+        modified();
+    }
     return retval;
 }
 
+// Divergence from upstream: a failed lookup is distinguished from a
+// confirmed absence (upstream inserts on any lookup miss) and the
+// write result is propagated instead of always reporting success.
 bool EnglishDatabase::train(const char *word, float delta) {
+    bool found = false;
     float freq = 0;
-    if (getUserWordInfo(word, freq)) {
-        freq += delta;
-        updateUserWord(word, freq);
-    } else {
-        insertUserWord(word, delta);
+    if (!getUserWordInfo(word, found, freq)) {
+        return false;
     }
-    return true;
+    if (found) {
+        freq += delta;
+        return updateUserWord(word, freq);
+    }
+    return insertUserWord(word, delta);
 }
 
 bool EnglishDatabase::executeSQL(sqlite3 *sqlite) {
