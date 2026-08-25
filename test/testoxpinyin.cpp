@@ -1143,9 +1143,10 @@ void testPunctuationDismissesPrediction(Instance *instance) {
     });
 }
 
-#ifdef OXPINYIN_TEST_CLOUDPINYIN
+#if defined(OXPINYIN_TEST_CLOUDPINYIN) || defined(OXPINYIN_TEST_CLOUD_ABSENT)
 // The "☁" (U+2601) unicode char cloudpinyin shows as the loading placeholder
-// until an async result fills the row.
+// until an async result fills the row. Shared by the module-present runner and
+// the module-absent guard runner (which asserts the row never appears).
 constexpr char kCloudPlaceholder[] = "\xe2\x98\x81";
 
 bool listHasCloudPlaceholder(InputContext *ic) {
@@ -1164,7 +1165,9 @@ bool listHasCloudPlaceholder(InputContext *ic) {
     }
     return false;
 }
+#endif // shared cloud-test helpers
 
+#ifdef OXPINYIN_TEST_CLOUDPINYIN
 // ON build: with Cloud Pinyin enabled and the real cloudpinyin module loaded,
 // typing a full-pinyin buffer issues a cloud request and injects the cloud row
 // at the configured slot (CloudPinyinIndex, 1-based). The row carries the "☁"
@@ -1279,6 +1282,65 @@ void testCloudToggleHotkey(Instance *instance) {
 }
 #endif
 
+#ifdef OXPINYIN_TEST_CLOUD_ABSENT
+// Module-absent guard: this harness loads the cloud-enabled oxpinyin addon
+// (ENABLE_CLOUDPINYIN ON) but NO cloudpinyin module -- it is absent from the
+// --enable list and no cloudpinyin metadata dir is wired in. With
+// CloudPinyinEnabled flipped ON, the engine's cloud path must still degrade
+// gracefully: cloudpinyin() is null, maybeAddCloudCandidate() returns at that
+// guard, no placeholder row is injected at the slot, and normal pinyin
+// composition + commit are intact. This is the past-the-enabled-check guard
+// that the default-disabled CloudPinyinEnabled never reaches on its own.
+void testCloudModuleAbsent(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        FCITX_ASSERT(oxpinyin);
+        // Pin this runner's precondition: cloudpinyin is unreachable here
+        // (absent from --enable, no metadata dir wired in), so cloudpinyin() is
+        // null and the guard-skip below is exercised for the intended reason --
+        // not merely because an async fill has not landed yet.
+        FCITX_ASSERT(!instance->addonManager().addon("cloudpinyin", true));
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        // Flip Cloud Pinyin on despite the module being absent.
+        RawConfig config;
+        config.setValueByPath("CloudPinyinEnabled", "True");
+        config.setValueByPath("CloudPinyinIndex", "2");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        // Composition succeeds and the module-absent guard keeps the cloud row
+        // out: were cloudpinyin() non-null with CloudPinyinEnabled on, the
+        // placeholder row would sit at the slot from the first request.
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        FCITX_ASSERT(!listHasCloudPlaceholder(ic));
+
+        // Normal commit is unaffected: digit-selecting candidate 0 commits the
+        // sentence the panel showed, with no cloud direct-commit path involved.
+        const auto preedit = ic->inputPanel().preedit().toString();
+        FCITX_ASSERT(!preedit.empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("1"), false));
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -1346,6 +1408,9 @@ int main() {
     testCloudRowAtSlot(&instance);
     testCloudToggleOff(&instance);
     testCloudToggleHotkey(&instance);
+#endif
+#ifdef OXPINYIN_TEST_CLOUD_ABSENT
+    testCloudModuleAbsent(&instance);
 #endif
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
