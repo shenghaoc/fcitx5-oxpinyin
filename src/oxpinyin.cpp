@@ -45,6 +45,15 @@
 #include "cloudpinyin_public.h"
 #endif
 
+#ifdef OXPINYIN_ENABLE_LUA
+// fcitx5-lua's LuaAddonLoader (imeapi): the public header that declares
+// ILuaAddon::invokeLuaFunction. LuaAddonLoader owns the lua interpreter; this
+// addon only delegates over the addon ABI, exactly the way
+// fcitx5-chinese-addons' pinyin does. Only pulled in for the ENABLE_LUA
+// build; the baseline stays header-free.
+#include <luaaddon_public.h>
+#endif
+
 FCITX_DEFINE_LOG_CATEGORY(oxpinyin_log, "oxpinyin");
 
 #define OXPINYIN_DEBUG() FCITX_LOGC(oxpinyin_log, Debug)
@@ -250,6 +259,26 @@ private:
     size_t index_;
 };
 
+#ifdef OXPINYIN_ENABLE_LUA
+// A lua candidate is delegated output from fcitx5-lua's imeapi module. Its
+// select is deliberately engine-independent: it commits the lua result
+// directly and resets — never a pinyin lattice selection — the same contract
+// as the Spell and Cloud rows.
+class OxpinyinLuaCandidateWord final : public CandidateWord {
+public:
+    OxpinyinLuaCandidateWord(OxpinyinEngine *engine, std::string word)
+        : CandidateWord(Text(word)), engine_(engine), word_(std::move(word)) {}
+
+    void select(InputContext *ic) const override {
+        engine_->state(ic)->luaSelected(word_);
+    }
+
+private:
+    OxpinyinEngine *engine_;
+    std::string word_;
+};
+#endif
+
 /*******************************************************************************
  * OxpinyinEngine
  ******************************************************************************/
@@ -324,6 +353,42 @@ bool OxpinyinEngine::handleCloudToggle(KeyEvent &keyEvent) {
         cloud->call<ICloudPinyin::resetError>();
     }
     return true;
+}
+#endif
+
+#ifdef OXPINYIN_ENABLE_LUA
+std::vector<std::string>
+OxpinyinEngine::luaCandidateTrigger(InputContext *ic,
+                                    const std::string &candidateString) {
+    std::vector<std::string> result;
+    auto *lua = imeapi();
+    if (!lua) {
+        return result;
+    }
+    // fcitx5-chinese-addons' call shape, verbatim: the candidate text goes in
+    // as the RawConfig value; imeapi's candidateTrigger answers with a
+    // RawConfig whose "Length" names the count and whose "0".."n-1" entries
+    // carry the extra candidate strings.
+    RawConfig arg;
+    arg.setValue(candidateString);
+    auto ret =
+        lua->call<ILuaAddon::invokeLuaFunction>(ic, "candidateTrigger", arg);
+    const auto *length = ret.valueByPath("Length");
+    try {
+        if (length) {
+            const auto n = std::stoi(*length);
+            for (int i = 0; i < n; i++) {
+                const auto *candidate = ret.valueByPath(std::to_string(i));
+                if (candidate && !candidate->empty()) {
+                    result.push_back(*candidate);
+                }
+            }
+        }
+    } catch (...) {
+        // A malformed Length is a bug in the lua extension; drop the extras
+        // instead of aborting candidate generation.
+    }
+    return result;
 }
 #endif
 
@@ -1055,6 +1120,24 @@ void OxpinyinState::cloudSelected(const std::string &selected,
 }
 #endif
 
+#ifdef OXPINYIN_ENABLE_LUA
+void OxpinyinState::luaSelected(const std::string &word) {
+    if (!composing() || word.empty()) {
+        return;
+    }
+    // The engine-independent workaround, same contract as Spell/Cloud: a lua
+    // result is NOT a pinyin lattice selection. Commit it directly and reset
+    // — never pinyin_choose_candidate, pinyin_train, constraints, or
+    // pinyin_remember_user_input, so the engine's selection/constraint/
+    // training machinery is never touched on the lua path.
+    ic_->commitString(word);
+    resetState();
+    if (*engine_->config().predictWords) {
+        enterPredicting(word);
+    }
+}
+#endif
+
 void OxpinyinState::updateUI() {
     auto &panel = ic_->inputPanel();
     panel.reset();
@@ -1143,6 +1226,14 @@ void OxpinyinState::updateUI() {
         auto list = std::make_unique<CommonCandidateList>();
         list->setSelectionKey(selectionKeys());
         list->setPageSize(*engine_->config().pageSize);
+#ifdef OXPINYIN_ENABLE_LUA
+        // Lua delegation is live only with the imeapi module present and an
+        // UNPINNED composition: selecting a lua row commits the whole buffer's
+        // worth of context directly, so under a pin it would silently discard
+        // the engine-owned chosen prefix — the same reason spellHint() stays
+        // pin-free.
+        const bool luaActive = engine_->imeapi() && cursor_ == 0;
+#endif
         const auto appendSpellCandidates = [&]() {
             for (const auto &word : spellCandidates) {
                 list->append<OxpinyinSpellCandidateWord>(engine_, word);
@@ -1155,6 +1246,20 @@ void OxpinyinState::updateUI() {
             }
             const auto &[text, index] = pinyinCandidates[i];
             list->append<OxpinyinCandidateWord>(engine_, Text(text), index);
+#ifdef OXPINYIN_ENABLE_LUA
+            // fcitx5-chinese-addons' shape: lua fires per engine candidate of
+            // the front page (the pageSize bound is its "top N candidates"
+            // overhead gate; this shell has no nbest option) with the
+            // candidate text as the trigger input, and every returned string
+            // lands as a row right after the candidate that produced it.
+            if (luaActive &&
+                i < static_cast<size_t>(*engine_->config().pageSize)) {
+                for (auto &word : engine_->luaCandidateTrigger(ic_, text)) {
+                    list->append<OxpinyinLuaCandidateWord>(engine_,
+                                                           std::move(word));
+                }
+            }
+#endif
         }
         if (spellPosition >= static_cast<int>(pinyinCandidates.size())) {
             appendSpellCandidates();

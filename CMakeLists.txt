@@ -54,6 +54,17 @@ if (ENABLE_CLOUDPINYIN)
     find_package(Fcitx5Module REQUIRED COMPONENTS CloudPinyin)
 endif ()
 
+# Optional lua-driven candidates via fcitx5-lua's LuaAddonLoader module (the
+# imeapi addon), the same delegation fcitx5-chinese-addons' pinyin uses. ON
+# additionally pulls in that module's public header (luaaddon_public.h) and
+# compiles the lua trigger/inject/direct-commit path; the lua interpreter
+# itself stays owned by LuaAddonLoader. OFF (the default) keeps all lua code
+# out and takes no fcitx5-lua dependency.
+option(ENABLE_LUA "Optional lua candidates via fcitx5-lua's imeapi" OFF)
+if (ENABLE_LUA)
+    find_package(Fcitx5ModuleLuaAddonLoader REQUIRED)
+endif ()
+
 # Sanitizer builds link the ASan/UBSan runtime into the test executable, so
 # the addon module must be allowed to reference it: strip the
 # -Wl,--no-undefined that Fcitx5CompilerSettings adds.
