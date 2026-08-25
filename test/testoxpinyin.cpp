@@ -24,6 +24,9 @@
 #include <vector>
 
 #include "oxpinyinconfig.h"
+#ifdef OXPINYIN_TEST_CLOUD_STUB
+#include "stubhanzi.h"
+#endif
 
 using namespace fcitx;
 
@@ -1143,10 +1146,12 @@ void testPunctuationDismissesPrediction(Instance *instance) {
     });
 }
 
-#if defined(OXPINYIN_TEST_CLOUDPINYIN) || defined(OXPINYIN_TEST_CLOUD_ABSENT)
+#if defined(OXPINYIN_TEST_CLOUDPINYIN) ||                                      \
+    defined(OXPINYIN_TEST_CLOUD_ABSENT) || defined(OXPINYIN_TEST_CLOUD_STUB)
 // The "☁" (U+2601) unicode char cloudpinyin shows as the loading placeholder
-// until an async result fills the row. Shared by the module-present runner and
-// the module-absent guard runner (which asserts the row never appears).
+// until an async result fills the row. Shared by the module-present runner,
+// the module-absent guard runner (asserts the row never appears), and the
+// hermetic stub runner (asserts the row shows the filled hanzi instead).
 constexpr char kCloudPlaceholder[] = "\xe2\x98\x81";
 
 bool listHasCloudPlaceholder(InputContext *ic) {
@@ -1341,6 +1346,74 @@ void testCloudModuleAbsent(Instance *instance) {
 }
 #endif
 
+#ifdef OXPINYIN_TEST_CLOUD_STUB
+// Hermetic cloud-select commit: this runner loads the in-tree STUB cloudpinyin
+// addon (not the real module), which answers every request SYNCHRONOUSLY with
+// the canned kStubCloudHanzi -- a cache-hit model. So the reused
+// CloudPinyinCandidateWord fills in its ctor (no network), the row at
+// CloudPinyinIndex-1 carries the canned hanzi (NOT the placeholder), and
+// selecting that row routes through the candidate's select callback to
+// OxpinyinState::cloudSelected, which commits selected+hanzi directly and
+// resets with no engine training. This closes the gap testCloudRowAtSlot's
+// comment flags: the positive commit IS asserted here.
+void testCloudStubSelectCommit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        FCITX_ASSERT(oxpinyin);
+        // The stub cloudpinyin addon loads in this harness.
+        auto *cloud = instance->addonManager().addon("cloudpinyin", true);
+        FCITX_ASSERT(cloud);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        RawConfig config;
+        config.setValueByPath("CloudPinyinEnabled", "True");
+        config.setValueByPath("CloudPinyinIndex", "2");
+        oxpinyin->setConfig(config);
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list);
+        auto *bulk = list->toBulk();
+        FCITX_ASSERT(bulk);
+        // CloudPinyinIndex 2 (1-based) => slot index 1: the stub-filled row,
+        // carrying the canned hanzi, NOT the placeholder. Proof the stub
+        // filled synchronously in the candidate ctor.
+        FCITX_ASSERT(bulk->totalSize() > 1);
+        FCITX_ASSERT(bulk->candidateFromAll(1).text().toString() ==
+                     kStubCloudHanzi);
+        FCITX_ASSERT(bulk->candidateFromAll(1).text().toString() !=
+                     kCloudPlaceholder);
+        // No stale placeholder row anywhere: the stub filled before the engine
+        // inserted, so every candidate carries real text.
+        FCITX_ASSERT(!listHasCloudPlaceholder(ic));
+
+        // Select the filled cloud row (slot index 1 => digit "2"): routes to
+        // cloudSelected, which commits selected+hanzi and resets. The buffer
+        // was unpinned/full, so selected is empty and the commit is exactly the
+        // canned hanzi -- no engine choose/train/remember side effect.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            kStubCloudHanzi);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("2"), false));
+        // Composition reset: no preedit, no candidate list.
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        config.setValueByPath("CloudPinyinEnabled", "False");
+        oxpinyin->setConfig(config);
+        instance->deactivate();
+    });
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -1357,8 +1430,27 @@ int main() {
     // cloudpinyin module is always loadable in the ON build.
     dataDirs.emplace_back(OXPINYIN_CLOUDPINYIN_DATADIR);
 #endif
+#ifdef OXPINYIN_TEST_CLOUD_STUB
+    // Stub cloudpinyin: add the stub's build dir to BOTH the addon dirs (so its
+    // cloudpinyinstub.so is located) and the data dirs (so its
+    // addon/cloudpinyin.conf is discovered). Discovery is first-found-wins
+    // (AddonManager skips a .conf whose filename is already seen), so the stub
+    // dir MUST come before the system pkgdatadir -- which holds a real
+    // cloudpinyin.conf (chinese-addons is installed for the ON build) -- or the
+    // real module would win and the stub never loads. Insert at index 1, ahead
+    // of the system pkgdatadir (index 0 is build/test, which has no
+    // cloudpinyin.conf). Only this runner does this, so the real-cloudpinyin
+    // and absent runners stay isolated.
+    dataDirs.insert(dataDirs.begin() + 1,
+                    TESTING_BINARY_DIR "/test/cloudpinyin-stub");
+    setupTestingEnvironment(TESTING_BINARY_DIR,
+                            {TESTING_BINARY_DIR "/src",
+                             TESTING_BINARY_DIR "/test/cloudpinyin-stub"},
+                            dataDirs);
+#else
     setupTestingEnvironment(TESTING_BINARY_DIR, {TESTING_BINARY_DIR "/src"},
                             dataDirs);
+#endif
     char arg0[] = "testoxpinyin";
     char arg1[] = "--disable=all";
 #ifdef OXPINYIN_TEST_NO_SPELL
@@ -1367,6 +1459,10 @@ int main() {
     // The cloud tests drive the real cloudpinyin module, so it must be enabled
     // alongside spell and the harness addons (it stays on-demand; enabling only
     // makes it loadable).
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,cloudpinyin";
+#elif defined(OXPINYIN_TEST_CLOUD_STUB)
+    // The stub runner loads the stub cloudpinyin addon in place of the real
+    // module; spell stays on so the full normal-composition suite is reused.
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,cloudpinyin";
 #else
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell";
@@ -1411,6 +1507,9 @@ int main() {
 #endif
 #ifdef OXPINYIN_TEST_CLOUD_ABSENT
     testCloudModuleAbsent(&instance);
+#endif
+#ifdef OXPINYIN_TEST_CLOUD_STUB
+    testCloudStubSelectCommit(&instance);
 #endif
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });
