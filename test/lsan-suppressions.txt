@@ -6,6 +6,16 @@
 # still present in 2.10.3). Every pinyin_guess_candidates() call during
 # composition leaks one 40-byte GArray through that path. Verified identical
 # on clean main: the leak is engine data, and this repo never reaches into
-# the engine to free it. The suppression is deliberately scoped to that one
-# symbol so ANY other leak still fails the gate.
+# the engine to free it.
+#
+# Frame scoping: the leaking frame would ideally be suppressed at
+# _prepend_longer_candidates(), but that helper is static inside libpinyin
+# and the distro libpinyin.so.15 is stripped (readelf shows only .dynsym, no
+# .symtab; nm -D has no _prepend_longer_candidates), so LSan can never
+# resolve it -- verified by an A/B run: a leak:_prepend_longer_candidates
+# suppression leaves the leak reported, while leak:pinyin_guess_candidates
+# suppresses it. pinyin_guess_candidates is therefore the narrowest unique
+# frame in the leak trace (frames above it are glib internals, matching any
+# glib array allocation; frames below are this addon's, which would mask
+# real leaks). Any OTHER leak still fails the gate.
 leak:pinyin_guess_candidates
