@@ -8,6 +8,7 @@
 #include "oxpinyinconfig.h"
 
 #include <fcitx-config/rawconfig.h>
+#include <fcitx/action.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 #include <fcitx/addonmanager.h>
@@ -77,6 +78,12 @@ private:
     // never re-decoded under another).
     void applyConfig();
 
+    // Re-sync the toggle actions' text/icons with the current config. Called
+    // from the ctor, the Activated handlers, and applyConfig() so a flip OR
+    // an external setConfig is reflected at once.
+    void syncPredictionAction();
+    void syncSpellAction();
+
     // Optional Chinese-addons conversion modules, resolved by name at
     // runtime. Each loader returns null when the module is not installed; the
     // matching status-area toggle is then simply not added (activate()). Both
@@ -118,6 +125,18 @@ private:
     OxpinyinConfig config_;
     OxpinyinInputScheme lastAppliedScheme_ = OxpinyinInputScheme::FullPinyin;
     std::unique_ptr<pinyin_context_t, decltype(&pinyin_fini)> context_;
+
+    // Status-bar toggles for this addon's OWN config switches, shaped after
+    // fcitx5-chinese-addons' pinyin prediction toggle: a SimpleAction per
+    // option, registered once by name in the engine ctor, and added to each
+    // IM's InputMethod status group in activate() (StatusArea auto-clears
+    // that group before every activate, so re-adding never duplicates and
+    // nothing leaks across input contexts). chttrans/fullwidth (PR #8) and
+    // punctuation are the MODULES' own actions and stay out of this pair;
+    // cloud's toggleKey is a hotkey, not a status action (same as
+    // chinese-addons).
+    SimpleAction predictionAction_;
+    SimpleAction spellAction_;
 };
 
 /*

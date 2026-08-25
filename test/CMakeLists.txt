@@ -39,6 +39,20 @@ target_link_libraries(testoxpinyin-punctabsent Fcitx5::Core
 add_dependencies(testoxpinyin-punctabsent copy-addon copy-im)
 add_test(testoxpinyin-punctabsent testoxpinyin-punctabsent)
 
+# Conversion-modules runner: chinese-addons' chttrans + fullwidth modules are
+# ENABLED so their toggle Actions land in the status area next to the
+# punctuation module's and this addon's own (the PR #8 wiring is what adds
+# them; this addon never re-creates them). Both conversions are dormant by
+# default (fullwidth off; chttrans enables per-IM only after its toggle), so
+# the normal-composition suite runs unchanged here too.
+add_executable(testoxpinyin-conv testoxpinyin.cpp)
+target_compile_definitions(testoxpinyin-conv PRIVATE OXPINYIN_TEST_CONV)
+target_link_libraries(testoxpinyin-conv Fcitx5::Core
+                      Fcitx5::Module::TestFrontend
+                      Fcitx5::Module::Punctuation)
+add_dependencies(testoxpinyin-conv copy-addon copy-im)
+add_test(testoxpinyin-conv testoxpinyin-conv)
+
 # ENABLE_CLOUDPINYIN: the cloud tests drive the REAL fcitx5-chinese-addons
 # cloudpinyin module. main() already adds fcitxPath("pkgdatadir") to the harness
 # data dirs (for the Spell module), which suffices when cloudpinyin is installed
@@ -166,7 +180,7 @@ list(APPEND OXPINYIN_TEST_ENV
      "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions.txt")
 if (OXPINYIN_TEST_ENV)
     set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell
-        testoxpinyin-punctabsent)
+        testoxpinyin-punctabsent testoxpinyin-conv)
     if (ENABLE_CLOUDPINYIN)
         list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent
              testoxpinyin-cloudstub)
