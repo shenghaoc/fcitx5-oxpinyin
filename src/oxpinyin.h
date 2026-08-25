@@ -18,6 +18,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#ifdef OXPINYIN_ENABLE_LUA
+#include <vector>
+#endif
 
 extern "C" {
 #include <pinyin.h>
@@ -95,6 +98,21 @@ private:
     FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
 #endif
 
+#ifdef OXPINYIN_ENABLE_LUA
+    // Optional imeapi module (fcitx5-lua's LuaAddonLoader), resolved by name
+    // at runtime. Returns null when fcitx5-lua is absent/disabled, so every
+    // lua path is guarded on imeapi() and the addon runs unaffected. Reached
+    // only over the addon ABI (invokeLuaFunction) — the lua interpreter is
+    // owned by LuaAddonLoader, never linked or re-implemented here.
+    FCITX_ADDON_DEPENDENCY_LOADER(imeapi, instance_->addonManager());
+
+    // Call imeapi's candidateTrigger for one candidate string and return the
+    // extra candidate strings the lua side produced (empty when the module is
+    // absent or the trigger yields nothing).
+    std::vector<std::string>
+    luaCandidateTrigger(InputContext *ic, const std::string &candidateString);
+#endif
+
     Instance *instance_;
     FactoryFor<OxpinyinState> factory_;
     OxpinyinConfig config_;
@@ -144,6 +162,9 @@ private:
     friend class OxpinyinCandidateWord;
     friend class OxpinyinPredictedWord;
     friend class OxpinyinSpellCandidateWord;
+#ifdef OXPINYIN_ENABLE_LUA
+    friend class OxpinyinLuaCandidateWord;
+#endif
     friend class OxpinyinEngine;
 
     // Candidate-list interaction while composing; true when consumed.
@@ -183,6 +204,13 @@ private:
     // constraint contract is untouched. `selected` is the already-committed
     // prefix (empty here: cloud fires only on an unpinned full buffer).
     void cloudSelected(const std::string &selected, const std::string &word);
+#endif
+
+#ifdef OXPINYIN_ENABLE_LUA
+    // Lua-candidate select: the engine-independent workaround (same contract
+    // as Spell/Cloud). Commits the lua result directly and resets — NEVER
+    // pinyin_choose_candidate, train, constraints, or user-input learning.
+    void luaSelected(const std::string &word);
 #endif
 
     std::string sentence() const;

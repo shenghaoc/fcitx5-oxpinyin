@@ -19,6 +19,21 @@ if (ENABLE_CLOUDPINYIN)
     target_link_libraries(oxpinyin Fcitx5::Module::CloudPinyin)
     target_compile_definitions(oxpinyin PRIVATE OXPINYIN_ENABLE_CLOUDPINYIN)
 endif ()
+
+# ENABLE_LUA pulls in fcitx5-lua's LuaAddonLoader module public header
+# (luaaddon_public.h; the Fcitx5::Module::LuaAddonLoader interface target
+# carries it, the way chinese-addons' pinyin links the same target) and flips
+# on the guarded lua code. OFF: no lua code, no lua header.
+if (ENABLE_LUA)
+    target_link_libraries(oxpinyin Fcitx5::Module::LuaAddonLoader)
+    target_compile_definitions(oxpinyin PRIVATE OXPINYIN_ENABLE_LUA)
+    # Default imeapi extension (date/time candidates), installed where
+    # imeapi's extension loader picks it up — the same destination
+    # chinese-addons' pinyin.lua uses.
+    install(FILES oxpinyin.lua
+            DESTINATION "${FCITX_INSTALL_PKGDATADIR}/lua/imeapi/extensions"
+            COMPONENT config)
+endif ()
 target_compile_definitions(oxpinyin PRIVATE FCITX_GETTEXT_DOMAIN=\"fcitx5-oxpinyin\")
 fcitx5_add_i18n_definition(TARGETS oxpinyin)
 install(TARGETS oxpinyin DESTINATION "${CMAKE_INSTALL_LIBDIR}/fcitx5")
@@ -27,14 +42,23 @@ fcitx5_translate_desktop_file(oxpinyin.conf.in oxpinyin.conf)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/oxpinyin.conf"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/fcitx5/inputmethod" COMPONENT config)
 
-# cloudpinyin is advertised as an optional dependency only when the cloud code
-# is actually built (ENABLE_CLOUDPINYIN). OFF leaves the manifest byte-for-byte
-# the header-free baseline — the leading newline keeps the entry on its own line
-# after 5=pinyinhelper.
+# Optional-dependency manifest entries are read as a SEQUENTIAL 0..N list
+# (fcitx's vector unmarshal stops at the first missing index), so each
+# feature-built entry takes the next free index after 5=pinyinhelper:
+# cloudpinyin and imeapi are advertised only when their code is actually
+# built (ENABLE_CLOUDPINYIN / ENABLE_LUA). Both OFF leaves the manifest
+# byte-for-byte the header-free baseline — the leading newlines keep the
+# appended entries on their own lines.
+set(OXPINYIN_OPTIONAL_DEPS "")
+set(_oxpinyin_optdep_next 6)
 if (ENABLE_CLOUDPINYIN)
-    set(OXPINYIN_CLOUDPINYIN_OPTDEP "\n6=cloudpinyin")
-else ()
-    set(OXPINYIN_CLOUDPINYIN_OPTDEP "")
+    string(APPEND OXPINYIN_OPTIONAL_DEPS
+           "\n${_oxpinyin_optdep_next}=cloudpinyin")
+    math(EXPR _oxpinyin_optdep_next "${_oxpinyin_optdep_next} + 1")
+endif ()
+if (ENABLE_LUA)
+    string(APPEND OXPINYIN_OPTIONAL_DEPS "\n${_oxpinyin_optdep_next}=imeapi")
+    math(EXPR _oxpinyin_optdep_next "${_oxpinyin_optdep_next} + 1")
 endif ()
 configure_file(oxpinyin-addon.conf.in.in oxpinyin-addon.conf.in)
 fcitx5_translate_desktop_file("${CMAKE_CURRENT_BINARY_DIR}/oxpinyin-addon.conf.in"

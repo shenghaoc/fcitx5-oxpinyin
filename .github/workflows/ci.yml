@@ -107,3 +107,45 @@ jobs:
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
           cmake --build build
           ctest --test-dir build --output-on-failure
+
+  check-lua:
+    name: Build and test (lua ON)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cxx_compiler: g++
+          - compiler: clang
+            cxx_compiler: clang++
+    env:
+      CC: ${{ matrix.compiler }}
+      CXX: ${{ matrix.cxx_compiler }}
+    steps:
+      - name: Install dependencies
+        run: |
+          # ENABLE_LUA additionally needs fcitx5-lua: the LuaAddonLoader
+          # module's public header (luaaddon_public.h) and its
+          # Fcitx5ModuleLuaAddonLoader cmake config at build time, plus the
+          # runtime modules (luaaddonloader + imeapi) for the harness. This
+          # job shares the header-dependent pattern with check-cloudpinyin;
+          # the header-free lua-OFF baseline is covered by the `check` job.
+          pacman -Syu --noconfirm base-devel clang cmake ninja git \
+            extra-cmake-modules fmt libuv boost \
+            libpinyin fcitx5 fcitx5-chinese-addons fcitx5-lua
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_LUA=ON \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build
+          ctest --test-dir build --output-on-failure

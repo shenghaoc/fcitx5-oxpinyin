@@ -1446,6 +1446,181 @@ void testCloudStubSelectCommit(Instance *instance) {
 }
 #endif
 
+#if defined(OXPINYIN_TEST_LUA) || defined(OXPINYIN_TEST_LUA_ABSENT)
+// The canned imeapi extension (test/lua/imeapi/extensions/oxpinyintest.lua)
+// answers the nihao candidate 你好 with the fixed marker 你好世界. These
+// constants are shared by the module-present runner (asserts the marker is
+// injected and selectable) and the module-absent guard (asserts it never
+// appears).
+constexpr char kLuaTrigger[] = "\xe4\xbd\xa0\xe5\xa5\xbd"; // 你好
+constexpr char kLuaCannedCandidate[] =
+    "\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c"; // 你好世界
+
+// Returns the index of `text` among ALL candidates (across pages), or -1.
+int luaCandidateIndexOf(InputContext *ic, const std::string &text) {
+    const auto list = ic->inputPanel().candidateList();
+    if (!list) {
+        return -1;
+    }
+    auto *bulk = list->toBulk();
+    if (!bulk) {
+        return -1;
+    }
+    for (int i = 0; i < bulk->totalSize(); ++i) {
+        if (bulk->candidateFromAll(i).text().toString() == text) {
+            return i;
+        }
+    }
+    return -1;
+}
+#endif // shared lua-test helpers
+
+#ifdef OXPINYIN_TEST_LUA
+// ON build: with fcitx5-lua's luaaddonloader + imeapi loaded and the canned
+// extension active, typing nihao triggers imeapi's candidateTrigger on the 你好
+// row and injects the canned 你好世界 row immediately after it. The engine's
+// own candidates are still present around it. This is the trigger->inject
+// assertion, fully deterministic (canned extension, no interpreter
+// assumptions).
+void testLuaCandidateInjection(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        // The real imeapi module must load in the ON runner.
+        auto *imeapi = instance->addonManager().addon("imeapi", true);
+        FCITX_ASSERT(imeapi);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list);
+
+        // The trigger candidate 你好 is present, and the canned lua row lands
+        // IMMEDIATELY after it (the injection shape from chinese-addons).
+        const int triggerIdx = luaCandidateIndexOf(ic, kLuaTrigger);
+        FCITX_ASSERT(triggerIdx >= 0);
+        const int luaIdx = luaCandidateIndexOf(ic, kLuaCannedCandidate);
+        FCITX_ASSERT(luaIdx == triggerIdx + 1);
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+
+// Selecting the injected lua row runs the engine-independent workaround
+// (OxpinyinState::luaSelected): it commits the canned lua text DIRECTLY and
+// resets — never pinyin_choose_candidate, train, or constraints. The commit
+// is exactly the canned string, and the composition is gone afterwards. That
+// the committed text is the lua marker (not any pinyin lattice sentence) is
+// the proof that the select path is engine-independent.
+void testLuaSelectCommitEngineIndependent(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list);
+        const auto common =
+            std::dynamic_pointer_cast<CommonCandidateList>(list);
+        FCITX_ASSERT(common);
+
+        // Locate the lua row; it must be reachable on the first page so a
+        // selection key can address it.
+        const int luaIdx = luaCandidateIndexOf(ic, kLuaCannedCandidate);
+        FCITX_ASSERT(luaIdx >= 0);
+        FCITX_ASSERT(luaIdx < common->pageSize());
+
+        // Select it via its digit key (index+1 on the current page). The
+        // commit expectation is EXACTLY the canned lua marker — the direct
+        // commit, not a pinyin sentence.
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(
+            kLuaCannedCandidate);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key(static_cast<KeySym>(FcitxKey_1 + luaIdx)), false));
+
+        // Reset after the direct commit: no preedit, no candidate list.
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+#endif
+
+#ifdef OXPINYIN_TEST_LUA_ABSENT
+// Module-absent guard: this harness loads the lua-enabled oxpinyin addon
+// (ENABLE_LUA ON) but NO fcitx5-lua modules — luaaddonloader/imeapi are off
+// the --enable list. imeapi() is null, so no lua rows are injected even
+// though the trigger candidate 你好 appears, and normal pinyin composition +
+// commit are intact. This is the guard that keeps the addon fully functional
+// without fcitx5-lua installed.
+void testLuaModuleAbsent(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        FCITX_ASSERT(oxpinyin);
+        // Pin this runner's precondition: imeapi is unreachable here, so the
+        // luaCandidateTrigger guard-skip below is exercised for the intended
+        // reason.
+        FCITX_ASSERT(!instance->addonManager().addon("imeapi", true));
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        // Composition succeeds and the module-absent guard keeps the canned
+        // lua row out: were imeapi() non-null, the trigger candidate would
+        // have produced it. (The trigger candidate's own presence is
+        // engine-data dependent, so it is not asserted here; the guard is
+        // pinned by the imeapi() null check above.)
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && !list->empty());
+        FCITX_ASSERT(luaCandidateIndexOf(ic, kLuaCannedCandidate) < 0);
+
+        // Normal commit is unaffected: digit-selecting candidate 0 commits the
+        // sentence the panel showed, with no lua direct-commit path involved.
+        const auto preedit = ic->inputPanel().preedit().toString();
+        FCITX_ASSERT(!preedit.empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("1"), false));
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -1461,6 +1636,13 @@ int main() {
     // (a CMAKE_PREFIX_PATH / split-prefix install). Add it so the real
     // cloudpinyin module is always loadable in the ON build.
     dataDirs.emplace_back(OXPINYIN_CLOUDPINYIN_DATADIR);
+#endif
+#ifdef OXPINYIN_LUA_DATADIR
+    // Same split-prefix story for fcitx5-lua: its luaaddonloader/imeapi addon
+    // confs and lua/imeapi/imeapi.lua live under the prefix where
+    // find_package(Fcitx5ModuleLuaAddonLoader) resolved the module. Add it so
+    // imeapi is always loadable in the ENABLE_LUA build.
+    dataDirs.emplace_back(OXPINYIN_LUA_DATADIR);
 #endif
 #ifdef OXPINYIN_TEST_CLOUD_STUB
     // Stub cloudpinyin: add the stub's build dir to BOTH the addon dirs (so its
@@ -1490,6 +1672,13 @@ int main() {
     // the punctuation module stays enabled — it is a hard dependency of
     // the engine, in every runner that loads the engine.
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,punctuation";
+#elif defined(OXPINYIN_TEST_CLOUDPINYIN) && defined(OXPINYIN_TEST_LUA)
+    // Both optional modules under test in one runner: the real cloudpinyin
+    // module plus fcitx5-lua's luaaddonloader + imeapi. Enabling only makes
+    // them loadable; the punctuation module is a hard dependency of the
+    // engine, so it is enabled in every module-present runner.
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation,"
+                  "cloudpinyin,luaaddonloader,imeapi";
 #elif defined(OXPINYIN_TEST_CLOUDPINYIN)
     // The cloud tests drive the real cloudpinyin module, so it must be enabled
     // alongside spell and the harness addons (it stays on-demand; enabling only
@@ -1502,6 +1691,14 @@ int main() {
     // module; spell stays on so the full normal-composition suite is reused.
     char arg2[] =
         "--enable=testim,testfrontend,oxpinyin,spell,punctuation,cloudpinyin";
+#elif defined(OXPINYIN_TEST_LUA)
+    // The lua tests drive fcitx5-lua's real modules: luaaddonloader (the
+    // shared-library loader for Type=Lua addons) and imeapi (the Lua IME API
+    // module that owns the interpreter and loads imeapi extensions). Both
+    // must be enabled; imeapi hard-depends on luaaddonloader. Spell stays on
+    // so the full normal-composition suite is reused.
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation,"
+                  "luaaddonloader,imeapi";
 #else
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation";
 #endif
@@ -1545,6 +1742,13 @@ int main() {
 #endif
 #ifdef OXPINYIN_TEST_CLOUD_STUB
     testCloudStubSelectCommit(&instance);
+#endif
+#ifdef OXPINYIN_TEST_LUA
+    testLuaCandidateInjection(&instance);
+    testLuaSelectCommitEngineIndependent(&instance);
+#endif
+#ifdef OXPINYIN_TEST_LUA_ABSENT
+    testLuaModuleAbsent(&instance);
 #endif
 
     instance.eventDispatcher().schedule([&instance]() { instance.exit(); });

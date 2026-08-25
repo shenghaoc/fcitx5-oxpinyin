@@ -104,6 +104,50 @@ if (ENABLE_CLOUDPINYIN)
     add_test(testoxpinyin-cloudstub testoxpinyin-cloudstub)
 endif ()
 
+# ENABLE_LUA: the lua tests drive the REAL fcitx5-lua modules (luaaddonloader
+# + imeapi) plus a canned in-tree imeapi extension. main() already adds
+# fcitxPath("pkgdatadir") to the harness data dirs, which suffices when
+# fcitx5-lua is installed under the same prefix as fcitx5 core (the usual
+# distro case). But it may be discovered via CMAKE_PREFIX_PATH at a DIFFERENT
+# prefix, and then its addon confs and lua/imeapi/imeapi.lua are NOT under
+# fcitx5 core's pkgdatadir. Derive that prefix from the discovered module
+# target's include dir
+#   <prefix>/include/Fcitx5/Module/fcitx-module/luaaddonloader
+# and hand its share/fcitx5 to the harness so imeapi is always loadable,
+# whatever prefix the module came from.
+if (ENABLE_LUA)
+    get_target_property(_lua_incdir Fcitx5::Module::LuaAddonLoader
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    set(_lua_prefix "${_lua_incdir}")
+    foreach (_ RANGE 4) # strip include/Fcitx5/Module/fcitx-module/luaaddonloader
+        get_filename_component(_lua_prefix "${_lua_prefix}" DIRECTORY)
+    endforeach ()
+    target_compile_definitions(testoxpinyin PRIVATE
+                               OXPINYIN_ENABLE_LUA
+                               OXPINYIN_TEST_LUA
+                               "OXPINYIN_LUA_DATADIR=\"${_lua_prefix}/share/fcitx5\"")
+    # Canned imeapi extension: imeapi loads *.lua from
+    # <PkgData>/lua/imeapi/extensions, and the harness data dirs include this
+    # build/test dir — so copying it here is enough for the loader to find it.
+    file(COPY lua/imeapi/extensions/oxpinyintest.lua
+         DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/lua/imeapi/extensions")
+
+    # A distinct process exercises the imeapi-absent guard: the addon is built
+    # with OXPINYIN_ENABLE_LUA but this harness enables NO lua modules —
+    # luaaddonloader/imeapi stay off the --enable list, imeapi() is null, no
+    # lua rows are injected, and normal composition + commit are intact. Spell
+    # stays loaded so this reuses the full normal-composition suite.
+    add_executable(testoxpinyin-luaabsent testoxpinyin.cpp)
+    target_compile_definitions(testoxpinyin-luaabsent PRIVATE
+                               OXPINYIN_ENABLE_LUA
+                               OXPINYIN_TEST_LUA_ABSENT)
+    target_link_libraries(testoxpinyin-luaabsent Fcitx5::Core
+                          Fcitx5::Module::TestFrontend
+                          Fcitx5::Module::Punctuation)
+    add_dependencies(testoxpinyin-luaabsent copy-addon copy-im)
+    add_test(testoxpinyin-luaabsent testoxpinyin-luaabsent)
+endif ()
+
 # Pass the engine data directory to the test as an environment variable;
 # the explicit -DOXPINYIN_SYSTEM_DATA_DIR=... override wins, otherwise
 # the ENGINE_SYSTEM_DATA_DIR resolved by the engine selector is used.
@@ -126,6 +170,9 @@ if (OXPINYIN_TEST_ENV)
     if (ENABLE_CLOUDPINYIN)
         list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent
              testoxpinyin-cloudstub)
+    endif ()
+    if (ENABLE_LUA)
+        list(APPEND _oxpinyin_tests testoxpinyin-luaabsent)
     endif ()
     set_tests_properties(${_oxpinyin_tests} PROPERTIES ENVIRONMENT
                                                    "${OXPINYIN_TEST_ENV}")
