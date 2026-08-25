@@ -10,6 +10,7 @@ Library=oxpinyin
 
 [Addon/Dependencies]
 0=core:@REQUIRED_FCITX_VERSION@
+1=punctuation
 
 [Addon/OptionalDependencies]
 0=quickphrase

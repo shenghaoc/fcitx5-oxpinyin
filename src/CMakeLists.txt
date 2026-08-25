@@ -1,14 +1,20 @@
-add_fcitx5_addon(oxpinyin oxpinyin.cpp punctuation.cpp)
+add_fcitx5_addon(oxpinyin oxpinyin.cpp)
 set_target_properties(oxpinyin PROPERTIES PREFIX "")
 configure_file(oxpinyin_paths.h.in oxpinyin_paths.h)
+# Fcitx5::Module::Punctuation is UNCONDITIONAL: punctuation is delegated to
+# fcitx5-chinese-addons' shared punctuation module (a hard dependency; the
+# interface target carries the include dir for punctuation_public.h, and the
+# module itself is reached at runtime over the addon ABI).
 target_link_libraries(oxpinyin Fcitx5::Core Fcitx5::Config
-                      Fcitx5::Module::Spell PkgConfig::ENGINE_PKG)
+                      Fcitx5::Module::Spell Fcitx5::Module::Punctuation
+                      PkgConfig::ENGINE_PKG)
 target_include_directories(oxpinyin PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # ENABLE_CLOUDPINYIN pulls in the cloudpinyin module's public header (the
 # Fcitx5::Module::CloudPinyin interface target carries only its include dir;
 # the module itself is reached at runtime over the addon ABI, never linked)
-# and flips on the guarded cloud code. OFF: none of this, header-free.
+# and flips on the guarded cloud code. OFF: no cloud code or cloud header
+# (the punctuation module's header is always present — hard dependency).
 if (ENABLE_CLOUDPINYIN)
     target_link_libraries(oxpinyin Fcitx5::Module::CloudPinyin)
     target_compile_definitions(oxpinyin PRIVATE OXPINYIN_ENABLE_CLOUDPINYIN)

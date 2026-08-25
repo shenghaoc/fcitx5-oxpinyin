@@ -46,12 +46,14 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          # No fcitx5-chinese-addons: punctuation is internal now, and
-          # full-width is delegated to fcitx5's own global fullwidth
-          # module. The addon must load with neither installed.
+          # fcitx5-chinese-addons is a HARD dependency: punctuation is
+          # delegated to its shared punctuation module (getPunctuation),
+          # needed at build time (header + Fcitx5Module Punctuation
+          # component) and at test time (the harness loads it). chttrans
+          # and fullwidth remain optional.
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
             extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5
+            libpinyin fcitx5 fcitx5-chinese-addons
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -84,10 +86,12 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          # ENABLE_CLOUDPINYIN needs the cloudpinyin module's public header and
-          # its Fcitx5::Module::CloudPinyin cmake config, plus the runtime
-          # module for the harness. All ship in fcitx5-chinese-addons. The
-          # header-free baseline is covered by the `check` job above.
+          # ENABLE_CLOUDPINYIN additionally needs the cloudpinyin module's
+          # public header and its Fcitx5::Module::CloudPinyin cmake config,
+          # plus the runtime module for the harness. This job shares the
+          # fcitx5-chinese-addons install with the baseline `check` job (a
+          # hard dependency now that punctuation is delegated) and layers the
+          # cloud-ON build on top. The cloud-OFF baseline is covered there.
           pacman -Syu --noconfirm base-devel clang cmake ninja git \
             extra-cmake-modules fmt libuv boost \
             libpinyin fcitx5 fcitx5-chinese-addons

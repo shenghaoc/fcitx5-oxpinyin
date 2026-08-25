@@ -4,6 +4,7 @@
  */
 #include "oxpinyin.h"
 #include "oxpinyin_paths.h"
+#include "punctuation_public.h"
 #include "spell_public.h"
 
 #include <algorithm>
@@ -25,6 +26,7 @@
 #include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/textformatflags.h>
+#include <fcitx-utils/utf8.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
@@ -327,8 +329,11 @@ bool OxpinyinEngine::handleCloudToggle(KeyEvent &keyEvent) {
 
 void OxpinyinEngine::activate(const InputMethodEntry & /*entry*/,
                               InputContextEvent &event) {
-    // Request the optional conversion modules and, when present, add their
-    // per-input-context toggle Actions to this IM's status group.
+    // Request the punctuation module (a HARD dependency) and the optional
+    // conversion modules and, when present, add their per-input-context
+    // toggle Actions to this IM's status group — the same
+    // {"punctuation", "chttrans", "fullwidth"} wiring fcitx5-chinese-addons'
+    // own pinyin does in its activate().
     //
     // Both chttrans (simplified/traditional) and fullwidth own GLOBAL
     // CommitFilters, but each fires ONLY for input contexts whose status area
@@ -341,10 +346,11 @@ void OxpinyinEngine::activate(const InputMethodEntry & /*entry*/,
     // dependency loader and lookupAction return null, so the toggle is skipped
     // and the addon runs unaffected. StatusArea clears the InputMethod group
     // before every activate(), so re-adding here never duplicates.
+    punctuation();
     chttrans();
     fullwidth();
     auto *ic = event.inputContext();
-    for (const auto *actionName : {"chttrans", "fullwidth"}) {
+    for (const auto *actionName : {"punctuation", "chttrans", "fullwidth"}) {
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction(actionName)) {
             ic->statusArea().addAction(StatusGroup::InputMethod, action);
@@ -523,10 +529,10 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
 
     // Space commits the composition. Handled before isSimple(), which
     // spans FcitxKey_space..FcitxKey_asciitilde and would otherwise
-    // swallow it first. With no composition the key passes through, but
-    // still goes through the module so it is recorded as the previous
-    // committed char — upstream does the same, and the
-    // comma/period-after-digit rule reads it.
+    // swallow it first. With no composition the key passes through: space
+    // has no punctuation-map entry, and the stateless getPunctuation
+    // delegation needs no bookkeeping for it (the deleted ibus-libpinyin
+    // port only routed it through for its digit-rule state).
     if (key.check(FcitxKey_space)) {
         if (composing()) {
             // Select the first displayed candidate, matching the digit path
@@ -540,11 +546,6 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
             }
             keyEvent.filterAndAccept();
             return;
-        }
-        if (auto result = punct_.process(
-                FcitxKey_space, *engine_->config().chinesePunctuation)) {
-            ic_->commitString(*result);
-            keyEvent.filterAndAccept();
         }
         return;
     }
@@ -564,9 +565,7 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
                 pinyin_get_parsed_input_length(instance_.get()) == 0 &&
                 !spellHint()) {
                 resetState();
-                if (auto result = punct_.process(
-                        key.sym(), *engine_->config().chinesePunctuation)) {
-                    ic_->commitString(*result);
+                if (commitPunctuation(key.sym())) {
                     keyEvent.filterAndAccept();
                 }
                 return;
@@ -579,9 +578,7 @@ void OxpinyinState::keyEvent(KeyEvent &keyEvent) {
         if (composing()) {
             commitSentence();
         }
-        if (auto result = punct_.process(
-                key.sym(), *engine_->config().chinesePunctuation)) {
-            ic_->commitString(*result);
+        if (commitPunctuation(key.sym())) {
             keyEvent.filterAndAccept();
         }
         return;
@@ -720,6 +717,31 @@ void OxpinyinState::selectSpellCandidate(const std::string &word) {
     }
     ic_->commitString(word);
     resetState();
+}
+
+bool OxpinyinState::commitPunctuation(uint32_t sym) {
+    if (!*engine_->config().chinesePunctuation) {
+        return false;
+    }
+    auto *punc = engine_->punctuation();
+    if (!punc) {
+        // Punctuation is a HARD dependency, so this should never fire; a
+        // broken install degrades to committing the raw key instead of
+        // crashing (production-assert policy).
+        ic_->commitString(utf8::UCS4ToUTF8(sym));
+        return true;
+    }
+    // getPunctuation(language, unicode) -> (punctuation, paired-alt): .first
+    // is the punctuation mapped to the key, .second is the closing half of a
+    // paired symbol, consumed only by the module's own stateful
+    // pushPunctuation path. An empty pair means no mapping (or the module's
+    // global toggle is off): leave the key with the client.
+    const auto &mapped = punc->call<IPunctuation::getPunctuation>("zh_CN", sym);
+    if (mapped.first.empty()) {
+        return false;
+    }
+    ic_->commitString(mapped.first);
+    return true;
 }
 
 std::string OxpinyinState::sentence() const {
@@ -1169,10 +1191,7 @@ std::string OxpinyinState::commitSentence() {
     return committed;
 }
 
-void OxpinyinState::reset() {
-    punct_.reset();
-    resetState();
-}
+void OxpinyinState::reset() { resetState(); }
 
 void OxpinyinState::resetState() {
     // pinyin_reset is the parse-path reset: the constraint store, the

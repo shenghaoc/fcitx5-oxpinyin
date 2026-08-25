@@ -7,7 +7,10 @@ find_package(PkgConfig REQUIRED)
 find_package(Gettext REQUIRED)
 find_package(Fcitx5Core ${REQUIRED_FCITX_VERSION} REQUIRED)
 find_package(Fcitx5Utils REQUIRED)
-find_package(Fcitx5Module REQUIRED COMPONENTS Spell TestFrontend)
+# The Punctuation component (fcitx5-chinese-addons) is a HARD dependency, not
+# an option: punctuation is delegated to the shared punctuation module via a
+# typed call (punctuation_public.h), the way fcitx5's own pinyin does it.
+find_package(Fcitx5Module REQUIRED COMPONENTS Spell TestFrontend Punctuation)
 
 set(ENGINE "libpinyin" CACHE STRING "Engine backend (libpinyin or oxpinyin)")
 set_property(CACHE ENGINE PROPERTY STRINGS libpinyin oxpinyin)
@@ -41,10 +44,10 @@ set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
 option(ENABLE_TEST "Build test" ON)
 
 # Optional Cloud Pinyin via fcitx5-chinese-addons' cloudpinyin module.
-# ON pulls in that module's public header (needs fcitx5-chinese-addons dev
-# files at build) and compiles the cloud request/inject/direct-commit path.
-# OFF (the default) keeps the addon header-free and self-contained: no
-# chinese-addons dependency, byte-for-byte the baseline build.
+# ON additionally pulls in that module's public header and compiles the cloud
+# request/inject/direct-commit path. OFF (the default) keeps only the cloud
+# code out — the addon needs fcitx5-chinese-addons dev files either way,
+# because punctuation is delegated to its punctuation module (hard dep above).
 option(ENABLE_CLOUDPINYIN
        "Optional Cloud Pinyin via chinese-addons' cloudpinyin module" OFF)
 if (ENABLE_CLOUDPINYIN)
@@ -88,8 +91,10 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Pinyin input method for fcitx5, powered by the ${ENGINE} engine")
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, ${ENGINE}")
-set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, ${ENGINE}")
+# fcitx5-chinese-addons is a hard runtime dependency: the addon does not load
+# without its punctuation module ([Addon/Dependencies]).
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-chinese-addons, ${ENGINE}")
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, fcitx5-chinese-addons, ${ENGINE}")
 include(CPack)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

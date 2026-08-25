@@ -1,0 +1,11 @@
+# LeakSanitizer suppressions for the ASan test gate.
+#
+# Upstream libpinyin leak (NOT this addon): _prepend_longer_candidates()
+# returns early without freeing its tokenarray when no longer candidate
+# exists (libpinyin commit 698c015 "Support longer candidate", 2022-09-20;
+# still present in 2.10.3). Every pinyin_guess_candidates() call during
+# composition leaks one 40-byte GArray through that path. Verified identical
+# on clean main: the leak is engine data, and this repo never reaches into
+# the engine to free it. The suppression is deliberately scoped to that one
+# symbol so ANY other leak still fails the gate.
+leak:pinyin_guess_candidates

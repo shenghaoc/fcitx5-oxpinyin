@@ -6,7 +6,6 @@
 #define FCITX5_OXPINYIN_OXPINYIN_H_
 
 #include "oxpinyinconfig.h"
-#include "punctuation.h"
 
 #include <fcitx-config/rawconfig.h>
 #include <fcitx/addonfactory.h>
@@ -62,6 +61,13 @@ public:
 private:
     friend class OxpinyinState;
     FCITX_ADDON_DEPENDENCY_LOADER(spell, instance_->addonManager());
+
+    // Punctuation is delegated to fcitx5-chinese-addons' shared punctuation
+    // module — a HARD dependency (declared in [Addon/Dependencies] and in
+    // CMake), unlike the guarded-optional modules below. The loader can
+    // still return null on a broken install; the key path degrades instead
+    // of crashing.
+    FCITX_ADDON_DEPENDENCY_LOADER(punctuation, instance_->addonManager());
 
     // Options bits + scheme setters from the current config; resets active
     // instances when the scheme changes (a buffer typed under one scheme is
@@ -159,6 +165,11 @@ private:
     // Spell candidates bypass pinyin selection/training/constraints.
     void selectSpellCandidate(const std::string &word);
 
+    // Delegate a punctuation key to chinese-addons' punctuation module
+    // (getPunctuation) and commit the result. Returns true when the key was
+    // consumed; false leaves it with the client.
+    bool commitPunctuation(uint32_t sym);
+
 #ifdef OXPINYIN_ENABLE_CLOUDPINYIN
     // Inject the cloud row into a freshly built candidate list, when enabled
     // and eligible (module present, unpinned fully-parsed full-pinyin buffer,
@@ -199,7 +210,6 @@ private:
         instance_;
     InputContext *ic_;
     OxpinyinEngine *engine_;
-    Punctuation punct_;
     std::string buffer_;   // raw keys, scheme-dependent
     size_t parsedLen_ = 0; // bytes the engine accepted
     size_t cursor_ = 0;    // raw-coordinate end of the chosen prefix

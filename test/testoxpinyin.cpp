@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "oxpinyinconfig.h"
+#include "punctuation_public.h"
 #ifdef OXPINYIN_TEST_CLOUD_STUB
 #include "stubhanzi.h"
 #endif
@@ -39,6 +40,20 @@ namespace {
  * not here: expectations are read back from the panel instead of being
  * hardcoded.
  */
+
+// Punctuation is delegated to fcitx5-chinese-addons' shared punctuation
+// module. Read the module's own verdict for a key: pair.first of
+// getPunctuation is the punctuation mapped to the key (an empty pair means
+// no mapping, or the module's global toggle is off). The mapping data is the
+// module's, never this addon's — so expectations are read here, not
+// hardcoded.
+std::string delegatedPunctuation(Instance *instance, uint32_t unicode) {
+    auto *punc = instance->addonManager().addon("punctuation", true);
+    FCITX_ASSERT(punc);
+    const auto &mapped =
+        punc->call<IPunctuation::getPunctuation>("zh_CN", unicode);
+    return mapped.first;
+}
 
 void setupGroup(Instance *instance) {
     auto defaultGroup = instance->inputMethodManager().currentGroup();
@@ -79,16 +94,19 @@ void testLoadAndPassthrough(Instance *instance) {
         FCITX_ASSERT(!ic->inputPanel().candidateList());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
-// Optional-modules invariant: chttrans/fullwidth (and cloudpinyin) are
-// optional dependencies. With none installed — the CI image ships no
-// fcitx5-chinese-addons, and this harness enables only oxpinyin — activate()
-// must run its guarded toggle-wiring without crashing, no toggle Action is
-// present to add, and composition/commit still work. This is THE invariant
-// the wiring must preserve: the addon loads and functions with none of the
-// optional modules present.
+// Optional-modules invariant: chttrans/fullwidth (and cloudpinyin) REMAIN
+// optional dependencies. With none of them enabled in this harness,
+// activate() must run its guarded toggle-wiring without crashing, no toggle
+// Action is present to add, and composition/commit still work. Punctuation
+// is the exception: it is now a HARD dependency (delegated via
+// getPunctuation), covered by testPunctuationDelegation in the runners that
+// load it and testPunctuationHardDependency in the runner that does not.
 void testOptionalModulesAbsent(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
         auto *testfrontend = instance->addonManager().addon("testfrontend");
@@ -123,6 +141,9 @@ void testOptionalModulesAbsent(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -155,6 +176,9 @@ void testTypeCommit(Instance *instance) {
         FCITX_ASSERT(!ic->inputPanel().candidateList());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -186,6 +210,9 @@ void testBackspace(Instance *instance) {
             uuid, Key(FcitxKey_BackSpace), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -216,6 +243,9 @@ void testEscape(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -265,6 +295,9 @@ void testCandidatesAndPassthrough(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -294,6 +327,9 @@ void testAuxPreedit(Instance *instance) {
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key("Escape"), false));
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -348,6 +384,9 @@ void testConfigApply(Instance *instance) {
         }
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -422,6 +461,9 @@ void testSpellCandidates(Instance *instance) {
         config.setValueByPath("SpellEnabled", "True");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -490,6 +532,9 @@ void testSpellSpaceSelection(Instance *instance) {
         FCITX_ASSERT(!ic->inputPanel().candidateList());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 #else
@@ -517,6 +562,9 @@ void testSpellUnavailable(Instance *instance) {
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key("Escape"), false));
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 #endif
@@ -572,6 +620,9 @@ void testSchemeSwitchZhuyin(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -642,6 +693,9 @@ void testPartialChoiceContinues(Instance *instance) {
         FCITX_ASSERT(!ic->inputPanel().candidateList());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -699,6 +753,9 @@ void testBackspaceUnpins(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -750,6 +807,9 @@ void testEscapeClearsPins(Instance *instance) {
             uuid, Key("Escape"), false));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -792,6 +852,9 @@ void testPredictAfterCommit(Instance *instance) {
         config.setValueByPath("PredictWords", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -850,6 +913,9 @@ void testPredictChain(Instance *instance) {
         config.setValueByPath("PredictWords", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -897,6 +963,9 @@ void testPredictExitOnTyping(Instance *instance) {
         config.setValueByPath("PredictWords", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -931,146 +1000,83 @@ void testPredictToggleOff(Instance *instance) {
         FCITX_ASSERT(!ic->inputPanel().candidateList());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
-// Phase 5: Chinese punctuation — representative ASCII→Chinese mappings
-// via the internal Punctuation module, behaviour-identical to
-// ibus-libpinyin FallbackEditor::processPunctForSimplifiedChinese.
-void testPunctuationMapping(Instance *instance) {
+// Punctuation is DELEGATED to fcitx5-chinese-addons' shared punctuation
+// module via getPunctuation — a HARD dependency, wired the way
+// fcitx5-chinese-addons' own pinyin does it. There is no internal mapping
+// table anymore: whatever the module maps, the engine commits and consumes;
+// what the module does not map passes through to the client. Expectations
+// are read from the module itself (delegatedPunctuation), because the
+// mapping data belongs to the module, not to this addon.
+//
+// Behavior note: this replaces the ibus-libpinyin FallbackEditor port. The
+// module's stateless getPunctuation verdict is authoritative — the port's
+// paired-quote alternation and comma/period-after-digit rule no longer
+// apply (repeated quote keys commit the same mapped half each time).
+void testPunctuationDelegation(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
         auto *testfrontend = instance->addonManager().addon("testfrontend");
         auto uuid =
             testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key("Control+space"), false));
 
-        struct Case {
-            KeySym sym;
-            std::string expected;
-        };
+        // Hard dependency wired fcitx5-native: activate() loaded the module,
+        // and its toggle Action is registered for the status area (the same
+        // wiring chinese-addons' pinyin adds).
+        FCITX_ASSERT(
+            instance->userInterfaceManager().lookupAction("punctuation"));
+
+        // A representative sweep: mapped keys, keys the module maps to
+        // themselves (still consumed), and unmapped keys. The quote keys
+        // appear twice: the delegation is stateless, so repeated presses
+        // commit the same mapped half.
         // clang-format off
-        const Case cases[] = {
-            {FcitxKey_exclam,       "\xef\xbc\x81"},       // ！
-            {FcitxKey_comma,        "\xef\xbc\x8c"},       // ，
-            {FcitxKey_period,       "\xe3\x80\x82"},       // 。
-            {FcitxKey_question,     "\xef\xbc\x9f"},       // ？
-            {FcitxKey_colon,        "\xef\xbc\x9a"},       // ：
-            {FcitxKey_semicolon,    "\xef\xbc\x9b"},       // ；
-            {FcitxKey_less,         "\xe3\x80\x8a"},       // 《
-            {FcitxKey_greater,      "\xe3\x80\x8b"},       // 》
-            {FcitxKey_parenleft,    "\xef\xbc\x88"},       // （
-            {FcitxKey_parenright,   "\xef\xbc\x89"},       // ）
-            {FcitxKey_bracketleft,  "\xe3\x80\x90"},       // 【
-            {FcitxKey_bracketright, "\xe3\x80\x91"},       // 】
-            {FcitxKey_braceleft,    "\xe3\x80\x8e"},       // 『
-            {FcitxKey_braceright,   "\xe3\x80\x8f"},       // 』
-            {FcitxKey_backslash,    "\xe3\x80\x81"},       // 、
-            {FcitxKey_grave,        "\xc2\xb7"},           // ·
-            {FcitxKey_asciitilde,   "\xef\xbd\x9e"},       // ～
-            {FcitxKey_dollar,       "\xef\xbf\xa5"},       // ￥
-            {FcitxKey_asciicircum,  "\xe2\x80\xa6\xe2\x80\xa6"}, // ……
-            {FcitxKey_underscore,   "\xe2\x80\x94\xe2\x80\x94"}, // ——
+        const KeySym keys[] = {
+            FcitxKey_exclam,       FcitxKey_comma,      FcitxKey_period,
+            FcitxKey_question,     FcitxKey_colon,      FcitxKey_semicolon,
+            FcitxKey_less,         FcitxKey_greater,    FcitxKey_parenleft,
+            FcitxKey_parenright,   FcitxKey_bracketleft,
+            FcitxKey_bracketright, FcitxKey_braceleft,  FcitxKey_braceright,
+            FcitxKey_backslash,    FcitxKey_grave,      FcitxKey_asciitilde,
+            FcitxKey_dollar,       FcitxKey_asciicircum,
+            FcitxKey_underscore,   FcitxKey_apostrophe, FcitxKey_apostrophe,
+            FcitxKey_quotedbl,     FcitxKey_quotedbl,   FcitxKey_at,
+            FcitxKey_numbersign,   FcitxKey_slash,      FcitxKey_plus,
         };
         // clang-format on
-
-        for (const auto &tc : cases) {
-            testfrontend->call<ITestFrontend::pushCommitExpectation>(
-                tc.expected);
-            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-                uuid, Key(tc.sym), false));
+        for (const auto sym : keys) {
+            const auto expected =
+                delegatedPunctuation(instance, static_cast<uint32_t>(sym));
+            if (expected.empty()) {
+                // No mapping (or the module's toggle is off): the key stays
+                // with the client.
+                FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
+                    uuid, Key(sym), false));
+            } else {
+                testfrontend->call<ITestFrontend::pushCommitExpectation>(
+                    expected);
+                FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                    uuid, Key(sym), false));
+            }
         }
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
-// Phase 5: paired-quote alternation (single and double).
-void testPairedQuotes(Instance *instance) {
-    instance->eventDispatcher().schedule([instance]() {
-        auto *testfrontend = instance->addonManager().addon("testfrontend");
-        auto uuid =
-            testfrontend->call<ITestFrontend::createInputContext>("testapp");
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key("Control+space"), false));
-
-        // Single quote: opening, closing, opening again.
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe2\x80\x98"); // '
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_apostrophe), false));
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe2\x80\x99"); // '
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_apostrophe), false));
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe2\x80\x98"); // ' again
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_apostrophe), false));
-
-        // Double quote: opening, closing.
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe2\x80\x9c"); // "
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_quotedbl), false));
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe2\x80\x9d"); // "
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_quotedbl), false));
-
-        instance->deactivate();
-    });
-}
-
-// Phase 5: comma and period after a digit pass through (not converted).
-void testCommaAfterDigit(Instance *instance) {
-    instance->eventDispatcher().schedule([instance]() {
-        auto *testfrontend = instance->addonManager().addon("testfrontend");
-        auto uuid =
-            testfrontend->call<ITestFrontend::createInputContext>("testapp");
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key("Control+space"), false));
-
-        // '5' passes through (not consumed by punctuation).
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_5), false));
-        // Comma after digit: not consumed.
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_comma), false));
-        // Period after digit (prev is now comma, not digit): converted.
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xe3\x80\x82"); // 。
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_period), false));
-
-        instance->deactivate();
-    });
-}
-
-// Phase 5: unmapped punctuation keys (like @, #, /) pass through.
-void testUnmappedPunctPassthrough(Instance *instance) {
-    instance->eventDispatcher().schedule([instance]() {
-        auto *testfrontend = instance->addonManager().addon("testfrontend");
-        auto uuid =
-            testfrontend->call<ITestFrontend::createInputContext>("testapp");
-        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key("Control+space"), false));
-
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_at), false));
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_numbersign), false));
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_slash), false));
-        FCITX_ASSERT(!testfrontend->call<ITestFrontend::sendKeyEvent>(
-            uuid, Key(FcitxKey_plus), false));
-
-        instance->deactivate();
-    });
-}
-
-// Phase 5: typing punctuation mid-composition commits the sentence
-// first, then commits the punctuation.
+// Typing punctuation mid-composition commits the sentence first, then
+// commits the punctuation delegated by the module.
 void testPunctuationMidComposition(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
         auto *testfrontend = instance->addonManager().addon("testfrontend");
@@ -1087,21 +1093,27 @@ void testPunctuationMidComposition(Instance *instance) {
         const auto preedit = ic->inputPanel().preedit().toString();
         FCITX_ASSERT(!preedit.empty());
 
-        // '!' mid-composition: commits the sentence, then the '！'.
+        // '!' mid-composition: commits the sentence, then whatever the
+        // punctuation module maps '!' to.
+        const auto punct = delegatedPunctuation(instance, FcitxKey_exclam);
+        FCITX_ASSERT(!punct.empty());
         testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xef\xbc\x81"); // ！
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(punct);
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key(FcitxKey_exclam), false));
         FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
-// Punctuation typed while a prediction list is shown must still convert.
-// The dismissal path used to re-dispatch only keys acceptChar() accepts,
-// so punctuation was swallowed: prediction closed and nothing committed.
+// Finding-D: punctuation typed while a prediction list is shown must still
+// commit. The dismissal path re-dispatches EVERY unconsumed key through the
+// normal path — where a punctuation key now hits the delegated getPunctuation
+// instead of being swallowed.
 void testPunctuationDismissesPrediction(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
         auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
@@ -1129,9 +1141,11 @@ void testPunctuationDismissesPrediction(Instance *instance) {
         FCITX_ASSERT(ic->inputPanel().candidateList() &&
                      !ic->inputPanel().candidateList()->empty());
 
-        // '!' is consumed and commits '！' — not dropped by the dismissal.
-        testfrontend->call<ITestFrontend::pushCommitExpectation>(
-            "\xef\xbc\x81"); // ！
+        // '!' is consumed and commits what the punctuation module maps it
+        // to — not dropped by the dismissal.
+        const auto punct = delegatedPunctuation(instance, FcitxKey_exclam);
+        FCITX_ASSERT(!punct.empty());
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(punct);
         FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key(FcitxKey_exclam), false));
 
@@ -1143,6 +1157,9 @@ void testPunctuationDismissesPrediction(Instance *instance) {
         config.setValueByPath("PredictWords", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -1218,6 +1235,9 @@ void testCloudRowAtSlot(Instance *instance) {
         config.setValueByPath("CloudPinyinEnabled", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -1247,6 +1267,9 @@ void testCloudToggleOff(Instance *instance) {
         FCITX_ASSERT(!listHasCloudPlaceholder(ic));
 
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 
@@ -1283,6 +1306,9 @@ void testCloudToggleHotkey(Instance *instance) {
         config.setValueByPath("CloudPinyinEnabled", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 #endif
@@ -1342,6 +1368,9 @@ void testCloudModuleAbsent(Instance *instance) {
         config.setValueByPath("CloudPinyinEnabled", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 #endif
@@ -1410,6 +1439,9 @@ void testCloudStubSelectCommit(Instance *instance) {
         config.setValueByPath("CloudPinyinEnabled", "False");
         oxpinyin->setConfig(config);
         instance->deactivate();
+        // Destroy the test input context so the engine state (and its
+        // pinyin instance) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
 #endif
@@ -1454,18 +1486,24 @@ int main() {
     char arg0[] = "testoxpinyin";
     char arg1[] = "--disable=all";
 #ifdef OXPINYIN_TEST_NO_SPELL
-    char arg2[] = "--enable=testim,testfrontend,oxpinyin";
+    // Deliberately WITHOUT spell (the lazy Spell-addon pointer stays null);
+    // the punctuation module stays enabled — it is a hard dependency of
+    // the engine, in every runner that loads the engine.
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,punctuation";
 #elif defined(OXPINYIN_TEST_CLOUDPINYIN)
     // The cloud tests drive the real cloudpinyin module, so it must be enabled
     // alongside spell and the harness addons (it stays on-demand; enabling only
-    // makes it loadable).
-    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,cloudpinyin";
+    // makes it loadable). The punctuation module is a hard dependency of the
+    // engine, so it is enabled in every module-present runner.
+    char arg2[] =
+        "--enable=testim,testfrontend,oxpinyin,spell,punctuation,cloudpinyin";
 #elif defined(OXPINYIN_TEST_CLOUD_STUB)
     // The stub runner loads the stub cloudpinyin addon in place of the real
     // module; spell stays on so the full normal-composition suite is reused.
-    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,cloudpinyin";
+    char arg2[] =
+        "--enable=testim,testfrontend,oxpinyin,spell,punctuation,cloudpinyin";
 #else
-    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell";
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation";
 #endif
     char *argv[] = {arg0, arg1, arg2};
     fcitx::Log::setLogRule("default=5,oxpinyin=5");
@@ -1494,10 +1532,7 @@ int main() {
     testPredictChain(&instance);
     testPredictExitOnTyping(&instance);
     testPredictToggleOff(&instance);
-    testPunctuationMapping(&instance);
-    testPairedQuotes(&instance);
-    testCommaAfterDigit(&instance);
-    testUnmappedPunctPassthrough(&instance);
+    testPunctuationDelegation(&instance);
     testPunctuationMidComposition(&instance);
     testPunctuationDismissesPrediction(&instance);
 #ifdef OXPINYIN_TEST_CLOUDPINYIN
