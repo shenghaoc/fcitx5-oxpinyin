@@ -4,3 +4,6 @@
 *.o
 compile_commands.json
 .clangd/
+/.podman/
+/.ref/
+/CMakeFiles/

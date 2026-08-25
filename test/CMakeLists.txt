@@ -5,19 +5,39 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
 add_subdirectory(addon)
 add_subdirectory(inputmethod)
 
+# Fcitx5::Module::Punctuation carries the include dir for
+# punctuation_public.h: the tests read the expected delegated punctuation
+# from the module itself (typed getPunctuation call), never hardcoding the
+# mapping data. The module runs in-process via the addon manager (--enable),
+# it is not linked.
 add_executable(testoxpinyin testoxpinyin.cpp)
-target_link_libraries(testoxpinyin Fcitx5::Core Fcitx5::Module::TestFrontend)
+target_link_libraries(testoxpinyin Fcitx5::Core Fcitx5::Module::TestFrontend
+                      Fcitx5::Module::Punctuation)
 add_dependencies(testoxpinyin copy-addon copy-im)
 add_test(testoxpinyin testoxpinyin)
 
 # A distinct process keeps the engine's lazy Spell-addon pointer null for the
 # entire run, verifying that a disabled module never blocks normal pinyin.
+# The punctuation module stays enabled here (as in every engine-loading
+# runner): it is a hard dependency.
 add_executable(testoxpinyin-nospell testoxpinyin.cpp)
 target_compile_definitions(testoxpinyin-nospell PRIVATE OXPINYIN_TEST_NO_SPELL)
 target_link_libraries(testoxpinyin-nospell Fcitx5::Core
-                      Fcitx5::Module::TestFrontend)
+                      Fcitx5::Module::TestFrontend
+                      Fcitx5::Module::Punctuation)
 add_dependencies(testoxpinyin-nospell copy-addon copy-im)
 add_test(testoxpinyin-nospell testoxpinyin-nospell)
+
+# Punctuation is a HARD dependency ([Addon/Dependencies]): fcitx5's addon
+# manager refuses to load the engine when the punctuation module is not
+# loadable. This dedicated runner deselects the module and pins exactly that
+# load-time enforcement — the inverted successor of the old "addon loads
+# without chinese-addons" invariant.
+add_executable(testoxpinyin-punctabsent testoxpinyin-punctabsent.cpp)
+target_link_libraries(testoxpinyin-punctabsent Fcitx5::Core
+                      Fcitx5::Module::TestFrontend)
+add_dependencies(testoxpinyin-punctabsent copy-addon copy-im)
+add_test(testoxpinyin-punctabsent testoxpinyin-punctabsent)
 
 # ENABLE_CLOUDPINYIN: the cloud tests drive the REAL fcitx5-chinese-addons
 # cloudpinyin module. main() already adds fcitxPath("pkgdatadir") to the harness
@@ -58,7 +78,8 @@ if (ENABLE_CLOUDPINYIN)
                                OXPINYIN_ENABLE_CLOUDPINYIN
                                OXPINYIN_TEST_CLOUD_ABSENT)
     target_link_libraries(testoxpinyin-cloudabsent Fcitx5::Core
-                          Fcitx5::Module::TestFrontend)
+                          Fcitx5::Module::TestFrontend
+                          Fcitx5::Module::Punctuation)
     add_dependencies(testoxpinyin-cloudabsent copy-addon copy-im)
     add_test(testoxpinyin-cloudabsent testoxpinyin-cloudabsent)
 
@@ -75,7 +96,8 @@ if (ENABLE_CLOUDPINYIN)
                                OXPINYIN_ENABLE_CLOUDPINYIN
                                OXPINYIN_TEST_CLOUD_STUB)
     target_link_libraries(testoxpinyin-cloudstub Fcitx5::Core
-                          Fcitx5::Module::TestFrontend)
+                          Fcitx5::Module::TestFrontend
+                          Fcitx5::Module::Punctuation)
     target_include_directories(testoxpinyin-cloudstub PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/cloudpinyin-stub)
     add_dependencies(testoxpinyin-cloudstub copy-addon copy-im cloudpinyinstub)
@@ -93,8 +115,14 @@ if (OXPINYIN_USER_DATA_DIR)
     list(APPEND OXPINYIN_TEST_ENV
          "OXPINYIN_USER_DATA_DIR=${OXPINYIN_USER_DATA_DIR}")
 endif ()
+# LeakSanitizer: suppress the known upstream libpinyin leak (see the
+# suppression file for the bug and scoping). Only ASan-instrumented builds
+# read LSAN_OPTIONS; it is ignored elsewhere.
+list(APPEND OXPINYIN_TEST_ENV
+     "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions.txt")
 if (OXPINYIN_TEST_ENV)
-    set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell)
+    set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell
+        testoxpinyin-punctabsent)
     if (ENABLE_CLOUDPINYIN)
         list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent
              testoxpinyin-cloudstub)
