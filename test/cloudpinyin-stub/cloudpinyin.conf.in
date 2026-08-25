@@ -1,0 +1,11 @@
+[Addon]
+Name=Cloud Pinyin (test stub)
+Comment=Hermetic synchronous cloudpinyin stub for the cloud-select test
+Category=Module
+Version=@PROJECT_VERSION@
+Type=SharedLibrary
+OnDemand=True
+Library=cloudpinyinstub
+
+[Addon/Dependencies]
+0=core:@REQUIRED_FCITX_VERSION@

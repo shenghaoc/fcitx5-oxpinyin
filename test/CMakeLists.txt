@@ -30,6 +30,9 @@ add_test(testoxpinyin-nospell testoxpinyin-nospell)
 # and hand its share/fcitx5 to the harness so cloudpinyin.conf is always
 # reachable, whatever prefix the module came from.
 if (ENABLE_CLOUDPINYIN)
+    # Hermetic synchronous cloudpinyin stub addon (test-only), built before the
+    # runners that load it.
+    add_subdirectory(cloudpinyin-stub)
     get_target_property(_cloudpinyin_incdir Fcitx5::Module::CloudPinyin
                         INTERFACE_INCLUDE_DIRECTORIES)
     set(_cloudpinyin_prefix "${_cloudpinyin_incdir}")
@@ -58,6 +61,25 @@ if (ENABLE_CLOUDPINYIN)
                           Fcitx5::Module::TestFrontend)
     add_dependencies(testoxpinyin-cloudabsent copy-addon copy-im)
     add_test(testoxpinyin-cloudabsent testoxpinyin-cloudabsent)
+
+    # Hermetic cloud-select runner: loads the in-tree STUB cloudpinyin addon
+    # (NOT the real module), which fills synchronously, so the full
+    # row->select->commit path is testable with no network. The addon/data dirs
+    # point ONLY at the stub dir (plus build/src for oxpinyin.so and the system
+    # pkgdatadir for Spell data); the stub's cloudpinyin.conf (under the
+    # build-root path) wins addon discovery over any system real cloudpinyin
+    # conf, so cloudpinyin() resolves to the stub. Defines the canned-hanzi
+    # macro shared with the stub addon for the assertion.
+    add_executable(testoxpinyin-cloudstub testoxpinyin.cpp)
+    target_compile_definitions(testoxpinyin-cloudstub PRIVATE
+                               OXPINYIN_ENABLE_CLOUDPINYIN
+                               OXPINYIN_TEST_CLOUD_STUB)
+    target_link_libraries(testoxpinyin-cloudstub Fcitx5::Core
+                          Fcitx5::Module::TestFrontend)
+    target_include_directories(testoxpinyin-cloudstub PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/cloudpinyin-stub)
+    add_dependencies(testoxpinyin-cloudstub copy-addon copy-im cloudpinyinstub)
+    add_test(testoxpinyin-cloudstub testoxpinyin-cloudstub)
 endif ()
 
 # Pass the engine data directory to the test as an environment variable;
@@ -74,7 +96,8 @@ endif ()
 if (OXPINYIN_TEST_ENV)
     set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell)
     if (ENABLE_CLOUDPINYIN)
-        list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent)
+        list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent
+             testoxpinyin-cloudstub)
     endif ()
     set_tests_properties(${_oxpinyin_tests} PROPERTIES ENVIRONMENT
                                                    "${OXPINYIN_TEST_ENV}")
