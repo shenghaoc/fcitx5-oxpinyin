@@ -13,12 +13,14 @@
 #include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/testing.h>
 #include <fcitx-utils/utf8.h>
+#include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputmethodgroup.h>
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+#include <fcitx/statusarea.h>
 #include <fcitx/userinterfacemanager.h>
 #include <string>
 #include <vector>
@@ -107,6 +109,11 @@ void testLoadAndPassthrough(Instance *instance) {
 // is the exception: it is now a HARD dependency (delegated via
 // getPunctuation), covered by testPunctuationDelegation in the runners that
 // load it and testPunctuationHardDependency in the runner that does not.
+// The conversion-modules runner (OXPINYIN_TEST_CONV) pins the modules
+// PRESENT instead: their own toggle Actions appear and are not duplicated
+// (testStatusToggleActions), so this absent-case invariant is not built
+// there.
+#ifndef OXPINYIN_TEST_CONV
 void testOptionalModulesAbsent(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
         auto *testfrontend = instance->addonManager().addon("testfrontend");
@@ -146,6 +153,7 @@ void testOptionalModulesAbsent(Instance *instance) {
         testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
 }
+#endif // !OXPINYIN_TEST_CONV
 
 // Phase 2: nihao -> filtered keys, non-empty preedit, non-empty candidate
 // list, Enter commits the sentence shown in the preedit, panel clears.
@@ -1006,6 +1014,222 @@ void testPredictToggleOff(Instance *instance) {
     });
 }
 
+// Status-bar toggles: the addon's OWN config switches (PredictWords,
+// SpellEnabled) get SimpleActions shaped after fcitx5-chinese-addons'
+// pinyin prediction toggle — registered once by name, Activated flips the
+// config live and re-syncs the action display, and activate() adds each to
+// the IM's InputMethod status group. The chttrans/fullwidth toggles are the
+// conversion MODULES' own actions (PR #8 wiring): when those modules are
+// enabled (OXPINYIN_TEST_CONV) they appear alongside, exactly once each,
+// never re-created here.
+void testStatusToggleActions(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
+        auto *testfrontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+
+        // The engine registered its actions once: lookups resolve to the
+        // same Action pointers.
+        auto *prediction = instance->userInterfaceManager().lookupAction(
+            "oxpinyin-prediction");
+        auto *spell =
+            instance->userInterfaceManager().lookupAction("oxpinyin-spell");
+        FCITX_ASSERT(prediction);
+        FCITX_ASSERT(spell);
+        FCITX_ASSERT(instance->userInterfaceManager().lookupAction(
+                         "oxpinyin-prediction") == prediction);
+        FCITX_ASSERT(instance->userInterfaceManager().lookupAction(
+                         "oxpinyin-spell") == spell);
+
+        // Explicit baseline (defaults): prediction off, spell on. The
+        // action display follows the config even for an external setConfig.
+        RawConfig config;
+        config.setValueByPath("PredictWords", "False");
+        config.setValueByPath("SpellEnabled", "True");
+        oxpinyin->setConfig(config);
+        FCITX_ASSERT(prediction->shortText(ic) == "Prediction Disabled");
+
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        FCITX_ASSERT(instance->inputMethod(ic) == "oxpinyin");
+
+        // Status area, InputMethod group: the punctuation module's toggle
+        // plus this addon's two — each exactly once. With the conversion
+        // modules enabled (OXPINYIN_TEST_CONV), their own toggles join and
+        // are likewise single.
+        std::vector<std::string> expectedNames{
+            "punctuation", "oxpinyin-prediction", "oxpinyin-spell"};
+#ifdef OXPINYIN_TEST_CONV
+        expectedNames.emplace_back("chttrans");
+        expectedNames.emplace_back("fullwidth");
+#endif
+        const auto actions = ic->statusArea().actions(StatusGroup::InputMethod);
+        FCITX_ASSERT(actions.size() == expectedNames.size());
+        for (const auto &name : expectedNames) {
+            FCITX_ASSERT(std::count_if(actions.begin(), actions.end(),
+                                       [&name](Action *a) {
+                                           return a->name() == name;
+                                       }) == 1);
+        }
+
+        // IM off/on on the SAME context re-runs activate(); the InputMethod
+        // group is auto-cleared before it, so each action still appears
+        // exactly once (nothing accumulates across re-activations). Only
+        // one context exists yet: instance->deactivate() touches only the
+        // most recent one, so the trigger below must be its re-activation.
+        instance->deactivate();
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        FCITX_ASSERT(instance->inputMethod(ic) == "oxpinyin");
+        const auto reappeared =
+            ic->statusArea().actions(StatusGroup::InputMethod);
+        FCITX_ASSERT(reappeared.size() == expectedNames.size());
+        for (const auto &name : expectedNames) {
+            FCITX_ASSERT(std::count_if(reappeared.begin(), reappeared.end(),
+                                       [&name](Action *a) {
+                                           return a->name() == name;
+                                       }) == 1);
+        }
+
+        // A second, not-yet-activated context has an empty InputMethod
+        // group: engine actions are added per context only when THIS IM
+        // activates there — no leak across input contexts. It is activated
+        // right away and reused for the cross-context sweep assertions.
+        auto uuid2 =
+            testfrontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic2 = instance->inputContextManager().findByUUID(uuid2);
+        FCITX_ASSERT(
+            ic2->statusArea().actions(StatusGroup::InputMethod).empty());
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid2, Key("Control+space"), false));
+        FCITX_ASSERT(instance->inputMethod(ic2) == "oxpinyin");
+        const auto actions2 =
+            ic2->statusArea().actions(StatusGroup::InputMethod);
+        FCITX_ASSERT(actions2.size() == expectedNames.size());
+        for (const auto &name : expectedNames) {
+            FCITX_ASSERT(std::count_if(actions2.begin(), actions2.end(),
+                                       [&name](Action *a) {
+                                           return a->name() == name;
+                                       }) == 1);
+        }
+
+        // Prediction toggle: activating flips the config and the display.
+        prediction->activate(ic);
+        FCITX_ASSERT(prediction->shortText(ic) == "Prediction Enabled");
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+
+        // Prediction on: the mode is in effect (list, no composing preedit).
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+
+        // A SECOND active context is left predicting too (the config is
+        // engine-global; the state is per-context).
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid2, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preedit2 = ic2->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preedit2);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid2, Key("Return"), false));
+        FCITX_ASSERT(ic2->inputPanel().candidateList() &&
+                     !ic2->inputPanel().candidateList()->empty());
+
+        // Toggle off while prediction lists are shown: the lists are
+        // dismissed at once EVERYWHERE — the sweep covers every active
+        // oxpinyin context, so the mode's UI does not linger anywhere.
+        prediction->activate(ic);
+        FCITX_ASSERT(prediction->shortText(ic) == "Prediction Disabled");
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+        FCITX_ASSERT(!ic2->inputPanel().candidateList());
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(ic2->inputPanel().preedit().toString().empty());
+
+        // Prediction off: a commit shows no prediction list.
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto preeditOff = ic->inputPanel().preedit().toString();
+        testfrontend->call<ITestFrontend::pushCommitExpectation>(preeditOff);
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Return"), false));
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+
+        // Spell toggle: default on. The lowercase English word occupies
+        // slot 1 (after the first pinyin candidate) — the existing spell
+        // suite pins the word; here it pins the ACTION flipping live.
+        FCITX_ASSERT(spell->shortText(ic) == "Spell Enabled");
+#ifndef OXPINYIN_TEST_NO_SPELL
+        // Both active contexts compose the same English-looking buffer; the
+        // Spell row sits at slot 1 in each.
+        for (const auto c : std::string("rhythm")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        for (const auto c : std::string("rhythm")) {
+            FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+                uuid2, Key(static_cast<KeySym>(c)), false));
+        }
+        const auto list = ic->inputPanel().candidateList();
+        FCITX_ASSERT(list && list->size() > 1);
+        FCITX_ASSERT(list->candidate(1).text().toString() == "rhythm");
+        const auto list2 = ic2->inputPanel().candidateList();
+        FCITX_ASSERT(list2 && list2->size() > 1);
+        FCITX_ASSERT(list2->candidate(1).text().toString() == "rhythm");
+        auto *bulkBefore = list->toBulk();
+        FCITX_ASSERT(bulkBefore);
+        const auto beforeTotal = bulkBefore->totalSize();
+        // Toggle off with the compositions live: the Spell row disappears
+        // at once in EVERY active context (the rest of each pinyin list is
+        // untouched).
+        spell->activate(ic);
+        FCITX_ASSERT(spell->shortText(ic) == "Spell Disabled");
+        for (InputContext *ctx : {ic, ic2}) {
+            const auto spellless = ctx->inputPanel().candidateList();
+            auto *bulkAfter = spellless ? spellless->toBulk() : nullptr;
+            FCITX_ASSERT(bulkAfter &&
+                         bulkAfter->totalSize() == beforeTotal - 1);
+            for (int i = 0; i < bulkAfter->totalSize(); ++i) {
+                FCITX_ASSERT(bulkAfter->candidateFromAll(i).text().toString() !=
+                             "rhythm");
+            }
+        }
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        FCITX_ASSERT(testfrontend->call<ITestFrontend::sendKeyEvent>(
+            uuid2, Key("Escape"), false));
+        // Back to the default state for the rest of the suite.
+        spell->activate(ic);
+        FCITX_ASSERT(spell->shortText(ic) == "Spell Enabled");
+#else
+        // Spell module absent: the toggle still flips (the config option is
+        // the addon's; only the candidates need the module).
+        spell->activate(ic);
+        FCITX_ASSERT(spell->shortText(ic) == "Spell Disabled");
+        spell->activate(ic);
+        FCITX_ASSERT(spell->shortText(ic) == "Spell Enabled");
+#endif
+
+        instance->deactivate();
+        // Destroy the test input contexts so the engine state (and its
+        // pinyin instances) is freed before LSan checks at exit.
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid2);
+        testfrontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+
 // Punctuation is DELEGATED to fcitx5-chinese-addons' shared punctuation
 // module via getPunctuation — a HARD dependency, wired the way
 // fcitx5-chinese-addons' own pinyin does it. There is no internal mapping
@@ -1699,6 +1923,16 @@ int main() {
     // so the full normal-composition suite is reused.
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation,"
                   "luaaddonloader,imeapi";
+#elif defined(OXPINYIN_TEST_CONV)
+    // Conversion-modules runner: the real chinese-addons chttrans and
+    // fullwidth modules are ENABLED, so activate() adds their toggle
+    // Actions next to the punctuation module's and this addon's own. Both
+    // conversions are dormant by default (fullwidth off; chttrans enables
+    // per-IM only after its toggle), so the full normal-composition suite
+    // runs unchanged; testStatusToggleActions pins the richer status-area
+    // set.
+    char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation,"
+                  "chttrans,fullwidth";
 #else
     char arg2[] = "--enable=testim,testfrontend,oxpinyin,spell,punctuation";
 #endif
@@ -1708,7 +1942,9 @@ int main() {
     instance.addonManager().registerDefaultLoader(nullptr);
 
     testLoadAndPassthrough(&instance);
+#ifndef OXPINYIN_TEST_CONV
     testOptionalModulesAbsent(&instance);
+#endif
     testTypeCommit(&instance);
     testBackspace(&instance);
     testEscape(&instance);
@@ -1729,6 +1965,7 @@ int main() {
     testPredictChain(&instance);
     testPredictExitOnTyping(&instance);
     testPredictToggleOff(&instance);
+    testStatusToggleActions(&instance);
     testPunctuationDelegation(&instance);
     testPunctuationMidComposition(&instance);
     testPunctuationDismissesPrediction(&instance);

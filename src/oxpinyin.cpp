@@ -312,6 +312,66 @@ OxpinyinEngine::OxpinyinEngine(Instance *instance)
     instance_->inputContextManager().registerProperty("oxpinyinstate",
                                                       &factory_);
     reloadConfig();
+
+    // Status-bar toggles for the addon's own switches, following
+    // fcitx5-chinese-addons' pinyin prediction toggle shape exactly: a
+    // SimpleAction per option, text/icon synced to the config, a
+    // connect<SimpleAction::Activated> handler that flips the config value
+    // and re-syncs, and a one-time registerAction by name. activate() then
+    // adds each to the IM's status group (never registered per context).
+    syncPredictionAction();
+    predictionAction_.setLongText(_("Show prediction words"));
+    predictionAction_.connect<SimpleAction::Activated>([this](
+                                                           InputContext *ic) {
+        config_.predictWords.setValue(!*config_.predictWords);
+        safeSaveAsIni(config_, kConfigFile);
+        syncPredictionAction();
+        predictionAction_.update(ic);
+        // The config is engine-global but each context's Predicting
+        // state is per-context: when the mode is switched off, sweep
+        // every active oxpinyin context so a shown prediction list
+        // cannot keep the mode alive anywhere — the same foreach
+        // pattern applyConfig() uses for scheme changes.
+        if (!*config_.predictWords && factory_.registered()) {
+            instance_->inputContextManager().foreach([this](InputContext *ctx) {
+                if (instance_->inputMethod(ctx) != "oxpinyin") {
+                    return true;
+                }
+                if (auto *st = state(ctx); st->predicting()) {
+                    st->resetState();
+                }
+                return true;
+            });
+        }
+    });
+    instance_->userInterfaceManager().registerAction("oxpinyin-prediction",
+                                                     &predictionAction_);
+
+    syncSpellAction();
+    spellAction_.setLongText(_("Show English candidates"));
+    spellAction_.connect<SimpleAction::Activated>([this](InputContext *ic) {
+        config_.spellEnabled.setValue(!*config_.spellEnabled);
+        safeSaveAsIni(config_, kConfigFile);
+        syncSpellAction();
+        spellAction_.update(ic);
+        // Spell rows are rebuilt per composition from the engine-global
+        // config (spellHint()); refresh every active oxpinyin context so the
+        // row appears/leaves at once everywhere, not only in the activating
+        // one.
+        if (factory_.registered()) {
+            instance_->inputContextManager().foreach([this](InputContext *ctx) {
+                if (instance_->inputMethod(ctx) != "oxpinyin") {
+                    return true;
+                }
+                if (auto *st = state(ctx); st->composing()) {
+                    st->refresh();
+                }
+                return true;
+            });
+        }
+    });
+    instance_->userInterfaceManager().registerAction("oxpinyin-spell",
+                                                     &spellAction_);
 }
 
 OxpinyinEngine::~OxpinyinEngine() = default;
@@ -421,6 +481,14 @@ void OxpinyinEngine::activate(const InputMethodEntry & /*entry*/,
             ic->statusArea().addAction(StatusGroup::InputMethod, action);
         }
     }
+    // The addon's OWN toggles ride the same per-IM group, registered once in
+    // the ctor and added here per input context — the exact shape of
+    // chinese-addons' pinyin prediction toggle. Only this addon's own actions
+    // are added: chttrans/fullwidth above are the modules' (PR #8), and
+    // cloud's toggleKey stays a hotkey (no status action), matching
+    // chinese-addons.
+    ic->statusArea().addAction(StatusGroup::InputMethod, &predictionAction_);
+    ic->statusArea().addAction(StatusGroup::InputMethod, &spellAction_);
 }
 
 void OxpinyinEngine::deactivate(const InputMethodEntry &entry,
@@ -456,6 +524,11 @@ void OxpinyinEngine::setConfig(const RawConfig &config) {
 }
 
 void OxpinyinEngine::applyConfig() {
+    // Toggle actions follow the config on ANY change (action activation,
+    // setConfig, reloadConfig), not just the flip in the Activated handler.
+    syncPredictionAction();
+    syncSpellAction();
+
     if (!context_) {
         return;
     }
@@ -544,6 +617,21 @@ void OxpinyinEngine::applyConfig() {
             return true;
         });
     }
+}
+
+void OxpinyinEngine::syncPredictionAction() {
+    predictionAction_.setShortText(*config_.predictWords
+                                       ? _("Prediction Enabled")
+                                       : _("Prediction Disabled"));
+    predictionAction_.setIcon(*config_.predictWords ? "fcitx-remind-active"
+                                                    : "fcitx-remind-inactive");
+}
+
+void OxpinyinEngine::syncSpellAction() {
+    spellAction_.setShortText(*config_.spellEnabled ? _("Spell Enabled")
+                                                    : _("Spell Disabled"));
+    spellAction_.setIcon(*config_.spellEnabled ? "fcitx-remind-active"
+                                               : "fcitx-remind-inactive");
 }
 
 /*******************************************************************************
