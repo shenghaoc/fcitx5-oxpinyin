@@ -41,6 +41,23 @@ if (ENABLE_CLOUDPINYIN)
                                OXPINYIN_ENABLE_CLOUDPINYIN
                                OXPINYIN_TEST_CLOUDPINYIN
                                "OXPINYIN_CLOUDPINYIN_DATADIR=\"${_cloudpinyin_prefix}/share/fcitx5\"")
+    # A distinct process exercises the module-absent guard: the addon is built
+    # with OXPINYIN_ENABLE_CLOUDPINYIN (ENABLE_CLOUDPINYIN ON) but this harness
+    # loads NO cloudpinyin module -- it is absent from --enable and no
+    # cloudpinyin datadir is wired in (the module must stay unreachable). With
+    # CloudPinyinEnabled flipped on, cloudpinyin() is null, no cloud row is
+    # injected, and normal composition + commit are intact. Spell stays loaded
+    # so this reuses the full normal-composition suite, isolating cloud-absent
+    # from the no-spell runner. Keep the datadir off so cloudpinyin.conf is not
+    # discoverable here; --enable already keeps it from loading.
+    add_executable(testoxpinyin-cloudabsent testoxpinyin.cpp)
+    target_compile_definitions(testoxpinyin-cloudabsent PRIVATE
+                               OXPINYIN_ENABLE_CLOUDPINYIN
+                               OXPINYIN_TEST_CLOUD_ABSENT)
+    target_link_libraries(testoxpinyin-cloudabsent Fcitx5::Core
+                          Fcitx5::Module::TestFrontend)
+    add_dependencies(testoxpinyin-cloudabsent copy-addon copy-im)
+    add_test(testoxpinyin-cloudabsent testoxpinyin-cloudabsent)
 endif ()
 
 # Pass the engine data directory to the test as an environment variable;
@@ -55,6 +72,10 @@ if (OXPINYIN_USER_DATA_DIR)
          "OXPINYIN_USER_DATA_DIR=${OXPINYIN_USER_DATA_DIR}")
 endif ()
 if (OXPINYIN_TEST_ENV)
-    set_tests_properties(testoxpinyin testoxpinyin-nospell PROPERTIES ENVIRONMENT
+    set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell)
+    if (ENABLE_CLOUDPINYIN)
+        list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent)
+    endif ()
+    set_tests_properties(${_oxpinyin_tests} PROPERTIES ENVIRONMENT
                                                    "${OXPINYIN_TEST_ENV}")
 endif ()
