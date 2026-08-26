@@ -91,9 +91,19 @@ owned per-backend by the engine projects.
 
 The engine library alone does nothing without its language-model data:
 
-- **System data (read-only):** exported `.redb` tables (`pinyin_index`,
-  `phrase_index`, `bigram`) plus `interpolation2.text`.
-- **User data (writable):** trained user-model files.
+- **System data (read-only)** — what it must contain depends on the
+  selected backend:
+  - **libpinyin:** the files its distribution package installs under its
+    data directory — `table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
+    `bigram.db`, among others. Distro packages ship these, so nothing
+    extra is needed on a normal installation.
+  - **oxpinyin:** the exported `.redb` tables (`pinyin_index`,
+    `phrase_index`, `bigram`) plus `interpolation2.text`. These are **not**
+    installed by building the engine library itself; produce them with the
+    engine's data export procedure and make them discoverable via the
+    resolution order below.
+- **User data (writable):** trained user-model files (kept per backend in
+  the user directory).
 
 At startup the shell resolves the two directories in this order:
 

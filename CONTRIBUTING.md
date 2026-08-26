@@ -27,15 +27,23 @@ a typical C++ repo, so please read the short ground rules first.
 Build and test setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 What the test suite covers and how to run it: [TESTING.md](TESTING.md).
 
-Every change should keep these green locally before you open a PR:
+Every change should keep this full matrix green locally before you open a
+PR — clean configure, build, and tests once per compiler, then formatting:
 
 ```sh
-cmake --build build && ctest --test-dir build --output-on-failure
+cmake -B build-gcc -DCMAKE_BUILD_TYPE=Release
+cmake --build build-gcc && ctest --test-dir build-gcc --output-on-failure
+
+CC=clang CXX=clang++ cmake -B build-clang -DCMAKE_BUILD_TYPE=Release
+cmake --build build-clang && ctest --test-dir build-clang --output-on-failure
+
 clang-format --dry-run -Werror src/*.h src/*.cpp test/*.cpp
 ```
 
 CI builds with both GCC and Clang on Arch Linux containers against the
 distro libpinyin (plus optional-feature variants); those jobs must pass.
+[DEVELOPMENT.md](DEVELOPMENT.md) is the authoritative list of options and
+gates.
 
 ## Commit conventions
 
