@@ -228,6 +228,19 @@ if (OXPINYIN_TEST_ENV)
                                                    "${OXPINYIN_TEST_ENV}")
 endif ()
 
+# The noengine runner deliberately drives pinyin_init to its failure path,
+# where upstream libpinyin leaks its partial context. LSan suppression
+# files cannot scope rules by binary, so that runner gets its own file (see
+# lsan-suppressions-noengine.txt) by swapping the LSAN_OPTIONS entry here —
+# every other runner keeps pinyin_init frames visible in its leak gate.
+set(_noengine_env "${OXPINYIN_TEST_ENV}")
+list(REMOVE_ITEM _noengine_env
+     "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions.txt")
+list(APPEND _noengine_env
+     "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions-noengine.txt")
+set_tests_properties(testoxpinyin-noengine PROPERTIES ENVIRONMENT
+                                                     "${_noengine_env}")
+
 if(ENABLE_FUZZ)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "ENABLE_FUZZ requires clang (-fsanitize=fuzzer)")
