@@ -11,7 +11,13 @@
  * and the DECLARE/EXPORT function tables key off "CloudPinyin::request"; a
  * different class name fails the EXPORT static_assert (resolve would break).
  */
+// Header-scoped shadow suppression, same justification as src/oxpinyin.cpp:
+// the upstream header shadows its own `pinyin` parameter in a lambda, and
+// the module include dir is plain -I, so gcc -Wshadow treats it as ours.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
 #include "cloudpinyin_public.h"
+#pragma GCC diagnostic pop
 #include "stubhanzi.h"
 
 #include <fcitx-utils/key.h>

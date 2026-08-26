@@ -39,7 +39,16 @@
 // ABI plus the header-only CloudPinyinCandidateWord we reuse (it issues the
 // async request in its ctor with a watch() ref and self-fills the row). Only
 // pulled in for the ENABLE_CLOUDPINYIN build; the baseline stays header-free.
+//
+// The shadow pragma is a justified, header-scoped suppression: the upstream
+// header shadows its own `pinyin` parameter in a lambda (gcc -Wshadow), and
+// the module's include dir arrives as plain -I rather than -isystem, so the
+// compiler treats it as this project's code. GCC and Clang both honor the
+// GCC diagnostic pragmas; this repo's own code stays fully under -Wshadow.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
 #include "cloudpinyin_public.h"
+#pragma GCC diagnostic pop
 #endif
 
 #ifdef OXPINYIN_ENABLE_LUA
