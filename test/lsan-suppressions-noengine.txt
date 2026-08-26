@@ -1,0 +1,23 @@
+# LeakSanitizer suppressions for testoxpinyin-noengine ONLY.
+#
+# LSan suppression files have no per-binary scoping syntax — leak: rules
+# match by frame name process-wide — so this file exists separately and
+# test/CMakeLists.txt points exactly this runner's LSAN_OPTIONS at it.
+#
+# Upstream libpinyin leak on the INIT-FAILURE path (NOT this addon): when
+# pinyin_init() fails (e.g. missing data tables) it returns NULL without
+# freeing its partially constructed context — verified via llvm-symbolizer
+# attribution of all four records (a 1464-byte C++ context object from
+# operator new, a g_build_filename GString pair, and two g_strdup paths,
+# every allocation root being pinyin_init itself, libpinyin 2.10.3). The
+# shell can never reach these bytes: pinyin_init hands back nothing on
+# failure, and no API exposes the partial context (a STOP-condition symbol
+# would be an init-failure-cleanup export; oxpinyin has none either).
+#
+# This runner deliberately drives that failure path (empty system data
+# dir), so the rule is unavoidable here. Scoping it to this binary keeps
+# pinyin_init frames fully visible in every other runner: a future
+# SUCCESS-path leak through pinyin_init would still fail those gates. The
+# engine never calls pinyin_guess_candidates in this runner (init failed),
+# so the composition-path suppression is not needed alongside it.
+leak:pinyin_init

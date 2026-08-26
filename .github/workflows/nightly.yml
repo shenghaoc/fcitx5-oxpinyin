@@ -34,6 +34,9 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          # Package lists arrive as multi-word strings; the expansion
+          # word-splits on purpose.
+          # shellcheck disable=SC2086
           pacman -Syu --noconfirm $DEP_PACKAGES llvm
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,6 +73,9 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          # Package lists arrive as multi-word strings; the expansion
+          # word-splits on purpose.
+          # shellcheck disable=SC2086
           pacman -Syu --noconfirm $DEP_PACKAGES cppcheck python-pip
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
