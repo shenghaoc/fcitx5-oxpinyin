@@ -18,4 +18,17 @@
 # frame in the leak trace (frames above it are glib internals, matching any
 # glib array allocation; frames below are this addon's, which would mask
 # real leaks). Any OTHER leak still fails the gate.
+#
+# RUNTIME REQUIREMENT: suppression matching resolves frame names through the
+# symbolizer. Without llvm-symbolizer on PATH every frame reports as a bare
+# address, no rule matches, and this gate fails on exactly the known,
+# documented engine leak (observed 2026-08 after toolchains stopped shipping
+# it transitively). test/CMakeLists.txt therefore requires llvm-symbolizer
+# under ENABLE_SANITIZER and pins ASAN_SYMBOLIZER_PATH into the test env.
+#
+# The upstream pinyin_init init-failure leak is deliberately NOT suppressed
+# here: it is scoped to the one runner that triggers it, in
+# lsan-suppressions-noengine.txt (see that file). Keeping pinyin_init frames
+# unsuppressed here means a future SUCCESS-path leak through pinyin_init in
+# any other runner still fails this gate.
 leak:pinyin_guess_candidates

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "oxpinyin.h"
+#include "englishness.h"
 #include "oxpinyin_paths.h"
 #include "punctuation_public.h"
 #include "spell_public.h"
@@ -10,21 +11,17 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <ranges>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/capabilityflags.h>
-#include <fcitx-utils/charutils.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/standardpaths.h>
-#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/textformatflags.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/addonmanager.h>
@@ -42,7 +39,16 @@
 // ABI plus the header-only CloudPinyinCandidateWord we reuse (it issues the
 // async request in its ctor with a watch() ref and self-fills the row). Only
 // pulled in for the ENABLE_CLOUDPINYIN build; the baseline stays header-free.
+//
+// The shadow pragma is a justified, header-scoped suppression: the upstream
+// header shadows its own `pinyin` parameter in a lambda (gcc -Wshadow), and
+// the module's include dir arrives as plain -I rather than -isystem, so the
+// compiler treats it as this project's code. GCC and Clang both honor the
+// GCC diagnostic pragmas; this repo's own code stays fully under -Wshadow.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
 #include "cloudpinyin_public.h"
+#pragma GCC diagnostic pop
 #endif
 
 #ifdef OXPINYIN_ENABLE_LUA
@@ -160,49 +166,6 @@ const KeyList &selectionKeys() {
         Key(FcitxKey_5), Key(FcitxKey_6), Key(FcitxKey_7), Key(FcitxKey_8),
         Key(FcitxKey_9), Key(FcitxKey_0)};
     return keys;
-}
-
-// Match fcitx5-chinese-addons' English-versus-pinyin scoring exactly. The
-// score is also the bounded number of Spell hints to request.
-std::tuple<bool, int> englishNess(const std::string &input, bool shuangpin) {
-    const auto tokens = stringutils::split(input, " ");
-    constexpr int fullPinyinWeight = -2;
-    constexpr int shortPinyinWeight = 3;
-    constexpr int invalidPinyinWeight = 6;
-    int weight = 0;
-
-    if (std::ranges::any_of(input, charutils::isupper)) {
-        return {true, std::max<size_t>(
-                          1, ((invalidPinyinWeight * tokens.size()) + 7) / 10)};
-    }
-
-    for (const auto &token : tokens) {
-        if (shuangpin) {
-            weight +=
-                token.size() == 2 ? fullPinyinWeight / 2 : invalidPinyinWeight;
-            continue;
-        }
-        if (token == "ng") {
-            weight += fullPinyinWeight;
-            continue;
-        }
-        const auto first = token.front();
-        if (first == '\'') {
-            return {false, 0};
-        }
-        if (first == 'i' || first == 'u' || first == 'v') {
-            weight += invalidPinyinWeight;
-        } else if (token.size() <= 2) {
-            weight += shortPinyinWeight;
-        } else if (token.find_first_of("aeiou") != std::string::npos) {
-            weight += fullPinyinWeight;
-        } else {
-            weight += shortPinyinWeight;
-        }
-    }
-
-    return weight < 0 ? std::tuple{false, 0}
-                      : std::tuple{false, (weight + 7) / 10};
 }
 
 } // namespace
@@ -593,9 +556,9 @@ void OxpinyinEngine::applyConfig() {
     if (const auto value = doublePinyinValue(scheme); value > 0) {
         pinyin_set_double_pinyin_scheme(context_.get(),
                                         static_cast<DoublePinyinScheme>(value));
-    } else if (const auto value = zhuyinValue(scheme); value > 0) {
+    } else if (const auto zhuyin = zhuyinValue(scheme); zhuyin > 0) {
         pinyin_set_zhuyin_scheme(context_.get(),
-                                 static_cast<ZhuyinScheme>(value));
+                                 static_cast<ZhuyinScheme>(zhuyin));
     }
 
     const bool schemeChanged = scheme != lastAppliedScheme_;
@@ -823,7 +786,9 @@ void OxpinyinState::selectCandidate(size_t index) {
         return;
     }
     lookup_candidate_t *candidate = nullptr;
-    if (!pinyin_get_candidate(instance_.get(), index, &candidate) ||
+    // The count guard above bounds index to guint range.
+    if (!pinyin_get_candidate(instance_.get(), static_cast<guint>(index),
+                              &candidate) ||
         !candidate) {
         return;
     }
@@ -1116,7 +1081,9 @@ void OxpinyinState::selectPredicted(size_t index) {
         return;
     }
     lookup_candidate_t *candidate = nullptr;
-    if (!pinyin_get_candidate(instance_.get(), index, &candidate) ||
+    // The count guard above bounds index to guint range.
+    if (!pinyin_get_candidate(instance_.get(), static_cast<guint>(index),
+                              &candidate) ||
         !candidate) {
         return;
     }

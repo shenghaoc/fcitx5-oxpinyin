@@ -2,6 +2,14 @@ configure_file(testdir.h.in testdir.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
+# -Wnull-dereference (gcc, strict-warning layer) false-positives on the test
+# idiom assert(non-null)-then-dereference: FCITX_ASSERT aborts on failure,
+# but the analyzer cannot see it. The engine sources carry no such pattern
+# (checked); this opt-out is scoped to the test tree only.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-Wno-null-dereference)
+endif()
+
 add_subdirectory(addon)
 add_subdirectory(inputmethod)
 
@@ -38,6 +46,20 @@ target_link_libraries(testoxpinyin-punctabsent Fcitx5::Core
                       Fcitx5::Module::TestFrontend)
 add_dependencies(testoxpinyin-punctabsent copy-addon copy-im)
 add_test(testoxpinyin-punctabsent testoxpinyin-punctabsent)
+
+# Degraded-engine runner: the runner itself points OXPINYIN_SYSTEM_DATA_DIR
+# at an EMPTY directory, so pinyin_init fails closed and
+# OxpinyinEngineFactory::create refuses to hand out the addon (the DATA-path
+# twin of testoxpinyin-punctabsent's dependency-path refusal). Pins that
+# observable end to end: the IM name still resolves but nothing backs it,
+# keys pass through unfiltered, the panel stays empty, and teardown stays
+# leak-free — a data problem must fail closed, never misbehave.
+add_executable(testoxpinyin-noengine testoxpinyin-noengine.cpp)
+target_link_libraries(testoxpinyin-noengine Fcitx5::Core
+                      Fcitx5::Module::TestFrontend
+                      Fcitx5::Module::Punctuation)
+add_dependencies(testoxpinyin-noengine copy-addon copy-im)
+add_test(testoxpinyin-noengine testoxpinyin-noengine)
 
 # Conversion-modules runner: chinese-addons' chttrans + fullwidth modules are
 # ENABLED so their toggle Actions land in the status area next to the
@@ -178,9 +200,23 @@ endif ()
 # read LSAN_OPTIONS; it is ignored elsewhere.
 list(APPEND OXPINYIN_TEST_ENV
      "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions.txt")
+# Suppression matching resolves
+# frame names through the symbolizer — without llvm-symbolizer on PATH every
+# suppressed leak reports as bare addresses and FAILS the run (observed when
+# toolchains stopped shipping it transitively). Require it and pin its path.
+if(ENABLE_SANITIZER)
+    find_program(OXPINYIN_LLVM_SYMBOLIZER NAMES llvm-symbolizer)
+    if(NOT OXPINYIN_LLVM_SYMBOLIZER)
+        message(FATAL_ERROR
+                "ENABLE_SANITIZER needs llvm-symbolizer for LSan suppression matching "
+                "(arch: pacman -S llvm; debian: apt install llvm)")
+    endif()
+    list(APPEND OXPINYIN_TEST_ENV
+         "ASAN_SYMBOLIZER_PATH=${OXPINYIN_LLVM_SYMBOLIZER}")
+endif()
 if (OXPINYIN_TEST_ENV)
     set(_oxpinyin_tests testoxpinyin testoxpinyin-nospell
-        testoxpinyin-punctabsent testoxpinyin-conv)
+        testoxpinyin-punctabsent testoxpinyin-conv testoxpinyin-noengine)
     if (ENABLE_CLOUDPINYIN)
         list(APPEND _oxpinyin_tests testoxpinyin-cloudabsent
              testoxpinyin-cloudstub)
@@ -191,3 +227,23 @@ if (OXPINYIN_TEST_ENV)
     set_tests_properties(${_oxpinyin_tests} PROPERTIES ENVIRONMENT
                                                    "${OXPINYIN_TEST_ENV}")
 endif ()
+
+# The noengine runner deliberately drives pinyin_init to its failure path,
+# where upstream libpinyin leaks its partial context. LSan suppression
+# files cannot scope rules by binary, so that runner gets its own file (see
+# lsan-suppressions-noengine.txt) by swapping the LSAN_OPTIONS entry here —
+# every other runner keeps pinyin_init frames visible in its leak gate.
+set(_noengine_env "${OXPINYIN_TEST_ENV}")
+list(REMOVE_ITEM _noengine_env
+     "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions.txt")
+list(APPEND _noengine_env
+     "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan-suppressions-noengine.txt")
+set_tests_properties(testoxpinyin-noengine PROPERTIES ENVIRONMENT
+                                                     "${_noengine_env}")
+
+if(ENABLE_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ENABLE_FUZZ requires clang (-fsanitize=fuzzer)")
+    endif()
+    add_subdirectory(fuzz)
+endif()

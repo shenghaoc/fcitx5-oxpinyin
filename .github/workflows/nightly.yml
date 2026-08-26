@@ -1,0 +1,105 @@
+name: nightly
+
+# Scheduled deep checks. None of these gate PRs on every push:
+#
+# - fuzz-campaign runs a bounded libFuzzer exploration of the pure input
+#   seam; PRs only run the short deterministic smoke (ci.yml fuzz-smoke).
+# - code-metrics is informational: cppcheck mostly duplicates clang-tidy
+#   here (its one unique complaint is the fcitx macro shape), and lizard is
+#   explicitly a hotspot SPOTLIGHT, not an enforced limit — existing hot
+#   spots are tracked in the report, not refactored reflexively.
+#
+# Run manually from the Actions tab or via the weekly schedule.
+
+on:
+  schedule:
+    - cron: '14 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Same set and same before-checkout constraint as ci.yml (the container
+  # has no git; local composite actions would need checkout first).
+  DEP_PACKAGES: >-
+    base-devel clang cmake ninja git extra-cmake-modules
+    fmt libuv boost libpinyin fcitx5 fcitx5-chinese-addons
+
+jobs:
+  fuzz-campaign:
+    name: Fuzz campaign (bounded)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          # Package lists arrive as multi-word strings; the expansion
+          # word-splits on purpose.
+          # shellcheck disable=SC2086
+          pacman -Syu --noconfirm $DEP_PACKAGES llvm
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build fuzz target
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DENABLE_FUZZ=ON -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake --build build --target englishness_fuzz
+      - name: Run bounded campaign over seed corpus
+        run: |
+          mkdir -p /tmp/corpus-out
+          ./build/test/fuzz/englishness_fuzz \
+            -max_total_time=900 -timeout=10 -rss_limit_mb=2560 \
+            -print_final_stats=1 \
+            test/fuzz/corpus /tmp/corpus-out
+          ls -la /tmp/corpus-out | head
+      - name: Upload crash artifacts (if any)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashes
+          path: crash-*
+          if-no-files-found: ignore
+
+  code-metrics:
+    name: Code metrics (informational)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          # Package lists arrive as multi-word strings; the expansion
+          # word-splits on purpose.
+          # shellcheck disable=SC2086
+          pacman -Syu --noconfirm $DEP_PACKAGES cppcheck python-pip
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: cppcheck scan
+        # unknownMacro is the expected fcitx-config macro-shape complaint;
+        # everything else must stay clean or it shows up here for review.
+        run: |
+          cppcheck --enable=warning,portability,performance --std=c++20 \
+            --language=c++ --inline-suppr --suppress=unknownMacro \
+            --xml src/ test/*.cpp 2> cppcheck.xml || true
+          cppcheck --enable=warning,portability,performance --std=c++20 \
+            --language=c++ --inline-suppr --suppress=unknownMacro \
+            src/ test/*.cpp || true
+      - name: Complexity hotspot report
+        run: |
+          pip install --quiet --break-system-packages lizard
+          python3 -m lizard -l cpp -C 15 src/ test/ | tail -40 > lizard.txt
+          cat lizard.txt
+      - name: Upload metrics reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: code-metrics
+          path: |
+            cppcheck.xml
+            lizard.txt

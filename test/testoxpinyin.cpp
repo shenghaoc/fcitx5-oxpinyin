@@ -480,7 +480,6 @@ void testSpellCandidates(Instance *instance) {
 // in slot 0, where the engine index would commit the wrong word or nothing.
 void testSpellSpaceSelection(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
-        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
         auto *testfrontend = instance->addonManager().addon("testfrontend");
         auto uuid =
             testfrontend->call<ITestFrontend::createInputContext>("testapp");
@@ -1675,8 +1674,10 @@ void testCloudStubSelectCommit(Instance *instance) {
 // answers the nihao candidate 你好 with the fixed marker 你好世界. These
 // constants are shared by the module-present runner (asserts the marker is
 // injected and selectable) and the module-absent guard (asserts it never
-// appears).
-constexpr char kLuaTrigger[] = "\xe4\xbd\xa0\xe5\xa5\xbd"; // 你好
+// appears). The trigger is only exercised by the present runner; clang's
+// -Wunused-const-variable fires on the absent build without the attribute.
+[[maybe_unused]] constexpr char kLuaTrigger[] =
+    "\xe4\xbd\xa0\xe5\xa5\xbd"; // 你好
 constexpr char kLuaCannedCandidate[] =
     "\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c"; // 你好世界
 
