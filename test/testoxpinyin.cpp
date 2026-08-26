@@ -480,7 +480,6 @@ void testSpellCandidates(Instance *instance) {
 // in slot 0, where the engine index would commit the wrong word or nothing.
 void testSpellSpaceSelection(Instance *instance) {
     instance->eventDispatcher().schedule([instance]() {
-        auto *oxpinyin = instance->addonManager().addon("oxpinyin", true);
         auto *testfrontend = instance->addonManager().addon("testfrontend");
         auto uuid =
             testfrontend->call<ITestFrontend::createInputContext>("testapp");

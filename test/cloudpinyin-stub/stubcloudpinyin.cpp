@@ -44,9 +44,9 @@ public:
     void resetError() {}
 
 private:
-    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, request);
-    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, toggleKey);
-    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, resetError);
+    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, request)
+    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, toggleKey)
+    FCITX_ADDON_EXPORT_FUNCTION(CloudPinyin, resetError)
 };
 
 class CloudPinyinFactory : public AddonFactory {

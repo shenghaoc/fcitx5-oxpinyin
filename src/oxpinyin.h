@@ -64,14 +64,14 @@ public:
 
 private:
     friend class OxpinyinState;
-    FCITX_ADDON_DEPENDENCY_LOADER(spell, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(spell, instance_->addonManager())
 
     // Punctuation is delegated to fcitx5-chinese-addons' shared punctuation
     // module — a HARD dependency (declared in [Addon/Dependencies] and in
     // CMake), unlike the guarded-optional modules below. The loader can
     // still return null on a broken install; the key path degrades instead
     // of crashing.
-    FCITX_ADDON_DEPENDENCY_LOADER(punctuation, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(punctuation, instance_->addonManager())
 
     // Options bits + scheme setters from the current config; resets active
     // instances when the scheme changes (a buffer typed under one scheme is
@@ -89,8 +89,8 @@ private:
     // matching status-area toggle is then simply not added (activate()). Both
     // conversions are the modules' own global CommitFilters — the shell wires
     // only the per-input-context toggle Action, never any conversion itself.
-    FCITX_ADDON_DEPENDENCY_LOADER(chttrans, instance_->addonManager());
-    FCITX_ADDON_DEPENDENCY_LOADER(fullwidth, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(chttrans, instance_->addonManager())
+    FCITX_ADDON_DEPENDENCY_LOADER(fullwidth, instance_->addonManager())
 
 #ifdef OXPINYIN_ENABLE_CLOUDPINYIN
     // Cloud Pinyin toggle hotkey (the module's toggleKey list): flips
@@ -102,7 +102,7 @@ private:
     // runtime. Returns null when the module is absent/disabled, so every cloud
     // path is guarded on cloudpinyin() and the addon runs unaffected. Reached
     // only over the addon ABI (request/toggleKey/resetError) — never linked.
-    FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager())
 #endif
 
 #ifdef OXPINYIN_ENABLE_LUA
@@ -111,7 +111,7 @@ private:
     // lua path is guarded on imeapi() and the addon runs unaffected. Reached
     // only over the addon ABI (invokeLuaFunction) — the lua interpreter is
     // owned by LuaAddonLoader, never linked or re-implemented here.
-    FCITX_ADDON_DEPENDENCY_LOADER(imeapi, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(imeapi, instance_->addonManager())
 
     // Call imeapi's candidateTrigger for one candidate string and return the
     // extra candidate strings the lua side produced (empty when the module is
