@@ -17,6 +17,11 @@ target_link_options(englishness_fuzz PRIVATE
 # PR-gate smoke: replay the checked-in seed corpus plus a fixed number of
 # fresh deterministic runs, with hard time/memory caps. Not a campaign —
 # long-running exploration is the nightly workflow's job.
+#
+# The corpus is COPIED into the build dir first: libFuzzer persists newly
+# discovered units into the first corpus directory, and pointing it at the
+# source tree would dirty the checkout on every test run.
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/corpus DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 add_test(NAME fuzz-englishness-smoke
          COMMAND englishness_fuzz -runs=2000 -timeout=10 -rss_limit_mb=2560
-                 ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
+                 ${CMAKE_CURRENT_BINARY_DIR}/corpus)
