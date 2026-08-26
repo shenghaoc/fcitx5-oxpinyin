@@ -18,4 +18,28 @@
 # frame in the leak trace (frames above it are glib internals, matching any
 # glib array allocation; frames below are this addon's, which would mask
 # real leaks). Any OTHER leak still fails the gate.
+#
+# RUNTIME REQUIREMENT: suppression matching resolves frame names through the
+# symbolizer. Without llvm-symbolizer on PATH every frame reports as a bare
+# address, no rule matches, and this gate fails on exactly the known,
+# documented engine leak (observed 2026-08 after toolchains stopped shipping
+# it transitively). test/CMakeLists.txt therefore requires llvm-symbolizer
+# under ENABLE_SANITIZER and pins ASAN_SYMBOLIZER_PATH into the test env.
 leak:pinyin_guess_candidates
+
+# Upstream libpinyin leak on the INIT-FAILURE path (NOT this addon): when
+# pinyin_init() fails (e.g. missing data tables) it returns NULL without
+# freeing its partially constructed context — verified via llvm-symbolizer
+# attribution of all four records (a 1464-byte C++ context object from
+# operator new, a g_build_filename GString pair, and two g_strdup paths,
+# every allocation root being pinyin_init itself, libpinyin 2.10.3). The
+# shell can never reach these bytes: pinyin_init hands back nothing on
+# failure, and no API exposes the partial context (a STOP-condition symbol
+# would be an init-failure-cleanup export; oxpinyin has none either).
+# Scoping notes mirror the guess_candidates rule above: pinyin_init IS also
+# on successful-load stacks, but success keeps everything reachable through
+# our unique_ptr<pinyin_context_t> until pinyin_fini, so today the rule can
+# only ever match genuine failure-path records — if the engine starts
+# leaking on the SUCCESS path this gate goes red again and that will
+# surface here.
+leak:pinyin_init
