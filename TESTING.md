@@ -66,10 +66,18 @@ apart; full parity between engines is a release criterion, not a claim.
 
 ## Engine data requirements for tests
 
-Every engine-loading runner needs valid system model data: the exported
-`.redb` tables (`pinyin_index`, `phrase_index`, `bigram`) and
-`interpolation2.text`. ctest resolves this automatically (compiled-in path
-or the `OXPINYIN_SYSTEM_DATA_DIR` CMake variable wins); for manual control:
+Every engine-loading runner needs valid system model data, and what that
+means depends on `-DENGINE=`:
+
+- `libpinyin` (default): the data directory shipped by its distribution
+  package (`table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
+  `bigram.db`, …) — located automatically on any normal distro setup.
+- `oxpinyin`: an exported data directory holding the `.redb` tables
+  (`pinyin_index`, `phrase_index`, `bigram`) plus `interpolation2.text`,
+  which installing the engine library alone does not provide.
+
+ctest resolves either case automatically (compiled-in path or the
+`OXPINYIN_SYSTEM_DATA_DIR` CMake variable wins); for manual control:
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release \

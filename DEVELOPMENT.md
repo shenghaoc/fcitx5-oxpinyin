@@ -20,7 +20,8 @@ A Linux environment with:
 - One engine visible to pkg-config:
   - the distribution `libpinyin` (its `.pc` file plus model data — what
     distro packages normally ship), or
-  - oxpinyin built from source (see below)
+  - oxpinyin built from source (see below; requires Rust, Cargo, and
+    cargo-c for `cargo cinstall`)
 - Optional additions for feature builds:
   - `ENABLE_CLOUDPINYIN`: chinese-addons' cloudpinyin module (development
     files for the build, the module at test time)
@@ -81,6 +82,7 @@ develop against the oxpinyin Rust engine instead:
 git clone https://github.com/shenghaoc/oxpinyin ../oxpinyin
 cd ../oxpinyin
 cargo cinstall -p oxpinyin-capi --prefix=$HOME/.local/oxpinyin --libdir=lib
+cd ../fcitx5-oxpinyin
 export PKG_CONFIG_PATH=$HOME/.local/oxpinyin/lib/pkgconfig:$PKG_CONFIG_PATH
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DENGINE=oxpinyin \
       -DOXPINYIN_SYSTEM_DATA_DIR=/path/to/exported/engine/data \
@@ -111,7 +113,7 @@ this shell.
 Every commit must have author **and** committer set to
 `Shenghao Chen <shenghaoc@outlook.com>` plus one trailer in the house form:
 
-```
+```text
 Assisted-by: Z.ai:GLM-5.3
 ```
 
