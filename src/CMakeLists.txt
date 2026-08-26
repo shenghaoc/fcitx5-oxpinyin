@@ -1,4 +1,4 @@
-add_fcitx5_addon(oxpinyin oxpinyin.cpp)
+add_fcitx5_addon(oxpinyin oxpinyin.cpp englishness.cpp)
 set_target_properties(oxpinyin PROPERTIES PREFIX "")
 configure_file(oxpinyin_paths.h.in oxpinyin_paths.h)
 # Fcitx5::Module::Punctuation is UNCONDITIONAL: punctuation is delegated to
