@@ -39,9 +39,45 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Export compile_commands.json for clang-tidy/clangd.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Diagnostic layer on top of Fcitx5CompilerSettings' -Wall -Wextra. The
+# selection is probed clean over src/ and test/ on gcc and clang (the source
+# carries the corresponding explicit casts/renames; -Wconversion catches the
+# size_t->guint narrowing at the engine C ABI), so new warnings that appear
+# are new findings, not baseline noise. Keep it that way: a flag that cannot
+# be kept warning-free gets scoped or dropped with a reason, not silenced by
+# reflex.
+option(OXPINYIN_STRICT_WARNINGS
+       "Extra diagnostics beyond fcitx5's -Wall/-Wextra defaults" ON)
+option(OXPINYIN_WARNINGS_AS_ERRORS
+       "Turn warnings into errors (used by the CI diagnostic gate)" OFF)
+if(OXPINYIN_STRICT_WARNINGS)
+    add_compile_options(-Wpedantic -Wshadow -Wformat=2 -Wundef
+                        -Wconversion -Wsign-conversion)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # High-signal gcc-only checks (probed clean for this tree); null
+        # dereference is enabled per-target because it false-positives on
+        # FCITX_ASSERT-guarded test code.
+        add_compile_options(-Wduplicated-cond -Wduplicated-branches
+                            -Wlogical-op)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options(-Wcomma -Wrange-loop-analysis)
+    endif()
+endif()
+if(OXPINYIN_WARNINGS_AS_ERRORS)
+    add_compile_options(-Werror)
+endif()
+
 set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
 
 option(ENABLE_TEST "Build test" ON)
+
+# libFuzzer harnesses over the shell's pure input-handling seam. Requires
+# clang (-fsanitize=fuzzer); CI runs a short deterministic smoke on PRs and
+# a bounded campaign on the nightly schedule.
+option(ENABLE_FUZZ "Build the libFuzzer harnesses" OFF)
 
 # Optional Cloud Pinyin via fcitx5-chinese-addons' cloudpinyin module.
 # ON additionally pulls in that module's public header and compiles the cloud
@@ -68,13 +104,19 @@ endif ()
 # Sanitizer builds link the ASan/UBSan runtime into the test executable, so
 # the addon module must be allowed to reference it: strip the
 # -Wl,--no-undefined that Fcitx5CompilerSettings adds.
+#
+# UBSan findings are non-fatal by default (a "runtime error" line and
+# continue), which a ctest gate cannot see. -fno-sanitize-recover=undefined
+# makes every UB abort, so the executing test fails; ASan is fatal already.
 option(ENABLE_SANITIZER "Build with ASan+UBSan" OFF)
 if (ENABLE_SANITIZER)
     string(REPLACE "-Wl,--no-undefined" ""
            CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS}")
     string(REPLACE "-Wl,--no-undefined" ""
            CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS}")
-    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_compile_options(-fsanitize=address,undefined
+                        -fno-sanitize-recover=undefined
+                        -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address,undefined)
 endif ()
 
