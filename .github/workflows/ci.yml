@@ -11,6 +11,16 @@ on:
 permissions:
   contents: read
 
+# One PR revision at a time: superseded runs are cancelled instead of racing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Shared build/test invocation; per-job CMake flags ride in job env
+  # (CMAKE_FLAGS) and get word-split on purpose below.
+  BUILD_TYPE: Release
+
 jobs:
   clang-format:
     name: Check clang-format
@@ -27,44 +37,33 @@ jobs:
       - uses: fcitx/github-actions@clang-format
 
   check:
-    name: Build and test
+    name: Build and test (gcc, strict warnings as errors)
     needs: clang-format
     runs-on: ubuntu-latest
     container: archlinux:latest
-    strategy:
-      fail-fast: false
-      matrix:
-        compiler: [gcc, clang]
-        include:
-          - compiler: gcc
-            cxx_compiler: g++
-          - compiler: clang
-            cxx_compiler: clang++
-    env:
-      CC: ${{ matrix.compiler }}
-      CXX: ${{ matrix.cxx_compiler }}
     steps:
-      - name: Install dependencies
-        run: |
-          # fcitx5-chinese-addons is a HARD dependency: punctuation is
-          # delegated to its shared punctuation module (getPunctuation),
-          # needed at build time (header + Fcitx5Module Punctuation
-          # component) and at test time (the harness loads it). chttrans
-          # and fullwidth remain optional.
-          pacman -Syu --noconfirm base-devel clang cmake ninja git \
-            extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5 fcitx5-chinese-addons
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: ./.github/actions/install-deps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build and test
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
-          cmake --build build
-          ctest --test-dir build --output-on-failure
+      - name: Configure, build, test
+        run: ./.github/scripts/build-test.sh
+
+  check-clang:
+    name: Build and test (clang, strict warnings as errors)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: ./.github/actions/install-deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure, build, test
+        env:
+          CC: clang
+          CXX: clang++
+        run: ./.github/scripts/build-test.sh
 
   check-cloudpinyin:
     name: Build and test (cloudpinyin ON)
@@ -83,30 +82,14 @@ jobs:
     env:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
+      CMAKE_FLAGS: -DENABLE_CLOUDPINYIN=ON
     steps:
-      - name: Install dependencies
-        run: |
-          # ENABLE_CLOUDPINYIN additionally needs the cloudpinyin module's
-          # public header and its Fcitx5::Module::CloudPinyin cmake config,
-          # plus the runtime module for the harness. This job shares the
-          # fcitx5-chinese-addons install with the baseline `check` job (a
-          # hard dependency now that punctuation is delegated) and layers the
-          # cloud-ON build on top. The cloud-OFF baseline is covered there.
-          pacman -Syu --noconfirm base-devel clang cmake ninja git \
-            extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5 fcitx5-chinese-addons
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: ./.github/actions/install-deps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build and test
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_CLOUDPINYIN=ON \
-            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
-          cmake --build build
-          ctest --test-dir build --output-on-failure
+      - name: Configure, build, test
+        run: ./.github/scripts/build-test.sh
 
   check-lua:
     name: Build and test (lua ON)
@@ -125,27 +108,90 @@ jobs:
     env:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
+      CMAKE_FLAGS: -DENABLE_LUA=ON
     steps:
-      - name: Install dependencies
-        run: |
-          # ENABLE_LUA additionally needs fcitx5-lua: the LuaAddonLoader
-          # module's public header (luaaddon_public.h) and its
-          # Fcitx5ModuleLuaAddonLoader cmake config at build time, plus the
-          # runtime modules (luaaddonloader + imeapi) for the harness. This
-          # job shares the header-dependent pattern with check-cloudpinyin;
-          # the header-free lua-OFF baseline is covered by the `check` job.
-          pacman -Syu --noconfirm base-devel clang cmake ninja git \
-            extra-cmake-modules fmt libuv boost \
-            libpinyin fcitx5 fcitx5-chinese-addons fcitx5-lua
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: ./.github/actions/install-deps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build and test
+      - name: Configure, build, test
+        run: ./.github/scripts/build-test.sh
+
+  check-sanitizer:
+    name: Sanitizers (clang, ASan+UBSan, strict UB)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      CC: clang
+      CXX: clang++
+      CMAKE_FLAGS: >-
+        -DENABLE_SANITIZER=ON
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    steps:
+      - uses: ./.github/actions/install-deps
+        with:
+          extra: llvm
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure, build, test
+        # llvm-symbolizer is REQUIRED here, not cosmetic: LSan suppression
+        # matching resolves frame names through it, and without it the known
+        # upstream libpinyin leak resurfaces as unsymbolized noise and fails
+        # the job (test/CMakeLists.txt additionally hard-requires it at
+        # configure time).
+        run: ./.github/scripts/build-test.sh
+
+  static-analysis:
+    name: Static analysis (clang-tidy)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: ./.github/actions/install-deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure (exports compile_commands.json)
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: clang-tidy over engine sources
+        # .clang-tidy is intentionally narrow (lifetimes/moves/narrowing at
+        # the engine C ABI, performance, analyzer) and configured clean;
+        # WarningsAsErrors makes any new finding fail this job.
+        run: clang-tidy -p build src/oxpinyin.cpp src/englishness.cpp
+
+  fuzz-smoke:
+    name: Fuzz smoke test (libFuzzer)
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: ./.github/actions/install-deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build with fuzz harnesses
+        env:
+          CC: clang
+          CXX: clang++
+          CMAKE_FLAGS: -DENABLE_FUZZ=ON
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_LUA=ON \
-            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)" $CMAKE_FLAGS
           cmake --build build
-          ctest --test-dir build --output-on-failure
+      - name: Run corpus smoke + regular suite
+        run: ctest --test-dir build --output-on-failure
+
+  package-check:
+    name: Package / install validation
+    needs: clang-format
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: ./.github/actions/install-deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install to a DESTDIR staging tree and validate layout
+        run: ./.github/scripts/package-check.sh

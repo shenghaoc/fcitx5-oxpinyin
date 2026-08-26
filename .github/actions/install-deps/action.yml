@@ -1,0 +1,25 @@
+name: Install dependencies
+description: >
+  Common archlinux package set for every container job (the distro
+  floating-dependency model: no pins, matching the reference shape). Extra
+  inputs are appended verbatim, so callers opt into cloudpinyin/lua/llvm
+  additions without copying the base list.
+inputs:
+  extra:
+    description: Additional pacman package names (space separated)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install dependencies
+      shell: bash
+      # fcitx5-chinese-addons is a HARD dependency everywhere: punctuation
+      # is delegated to its shared punctuation module, needed at build time
+      # (header + Fcitx5Module Punctuation component) and at test time (the
+      # harness loads it).
+      run: |
+        pacman -Syu --noconfirm base-devel clang cmake ninja git \
+          extra-cmake-modules fmt libuv boost \
+          libpinyin fcitx5 fcitx5-chinese-addons ${{ inputs.extra }}
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
