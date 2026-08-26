@@ -19,13 +19,23 @@ on:
 permissions:
   contents: read
 
+env:
+  # Same set and same before-checkout constraint as ci.yml (the container
+  # has no git; local composite actions would need checkout first).
+  DEP_PACKAGES: >-
+    base-devel clang cmake ninja git extra-cmake-modules
+    fmt libuv boost libpinyin fcitx5 fcitx5-chinese-addons
+
 jobs:
   fuzz-campaign:
     name: Fuzz campaign (bounded)
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES llvm
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -58,9 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: ./.github/actions/install-deps
-        with:
-          extra: cppcheck python-pip
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES cppcheck python-pip
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

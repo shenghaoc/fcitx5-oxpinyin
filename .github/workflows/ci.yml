@@ -17,9 +17,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Shared build/test invocation; per-job CMake flags ride in job env
-  # (CMAKE_FLAGS) and get word-split on purpose below.
   BUILD_TYPE: Release
+  # Shared archlinux package set. Dependencies install BEFORE checkout (the
+  # container has no git, and actions/checkout needs one), so this cannot be
+  # a local composite action -- `uses: ./...` only resolves after checkout.
+  # fcitx5-chinese-addons is a HARD dependency everywhere: punctuation is
+  # delegated to its shared punctuation module, needed at build time (header
+  # + Fcitx5Module Punctuation component) and at test time (the harness
+  # loads it).
+  DEP_PACKAGES: >-
+    base-devel clang cmake ninja git extra-cmake-modules
+    fmt libuv boost libpinyin fcitx5 fcitx5-chinese-addons
 
 jobs:
   clang-format:
@@ -42,7 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -54,15 +65,18 @@ jobs:
     needs: clang-format
     runs-on: ubuntu-latest
     container: archlinux:latest
+    env:
+      CC: clang
+      CXX: clang++
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Configure, build, test
-        env:
-          CC: clang
-          CXX: clang++
         run: ./.github/scripts/build-test.sh
 
   check-cloudpinyin:
@@ -84,7 +98,10 @@ jobs:
       CXX: ${{ matrix.cxx_compiler }}
       CMAKE_FLAGS: -DENABLE_CLOUDPINYIN=ON
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -109,8 +126,15 @@ jobs:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
       CMAKE_FLAGS: -DENABLE_LUA=ON
+      EXTRA_PACKAGES: fcitx5-lua
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        # ENABLE_LUA additionally needs fcitx5-lua: the LuaAddonLoader
+        # module's public header and its cmake config at build time, plus
+        # the runtime modules for the harness.
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES $EXTRA_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -128,19 +152,21 @@ jobs:
       CMAKE_FLAGS: >-
         -DENABLE_SANITIZER=ON
         -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      EXTRA_PACKAGES: llvm
     steps:
-      - uses: ./.github/actions/install-deps
-        with:
-          extra: llvm
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Configure, build, test
+      - name: Install dependencies
         # llvm-symbolizer is REQUIRED here, not cosmetic: LSan suppression
         # matching resolves frame names through it, and without it the known
         # upstream libpinyin leak resurfaces as unsymbolized noise and fails
         # the job (test/CMakeLists.txt additionally hard-requires it at
         # configure time).
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES $EXTRA_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure, build, test
         run: ./.github/scripts/build-test.sh
 
   static-analysis:
@@ -149,7 +175,10 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -166,16 +195,20 @@ jobs:
     needs: clang-format
     runs-on: ubuntu-latest
     container: archlinux:latest
+    env:
+      CC: clang
+      CXX: clang++
+      CMAKE_FLAGS: -DENABLE_FUZZ=ON
+      EXTRA_PACKAGES: llvm
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES $EXTRA_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build with fuzz harnesses
-        env:
-          CC: clang
-          CXX: clang++
-          CMAKE_FLAGS: -DENABLE_FUZZ=ON
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
             -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)" $CMAKE_FLAGS
@@ -189,7 +222,10 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: ./.github/actions/install-deps
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm $DEP_PACKAGES
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
