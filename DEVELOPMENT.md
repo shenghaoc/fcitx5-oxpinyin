@@ -33,6 +33,8 @@ On an Arch-like system this is roughly:
 ```sh
 pacman -S --needed base-devel clang cmake ninja git extra-cmake-modules \
   fmt libuv boost libpinyin fcitx5 fcitx5-chinese-addons
+# Only for the oxpinyin-from-source engine (the rust package ships cargo):
+# pacman -S --needed rust cargo-c
 ```
 
 This repository's own continuous integration runs exactly such a container,
