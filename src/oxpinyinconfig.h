@@ -45,57 +45,79 @@ FCITX_CONFIG_ENUM_NAME_WITH_I18N(
     N_("Eten26 Zhuyin"), N_("Standard Zhuyin (Dvorak)"),
     N_("Hsu Zhuyin (Dvorak)"), N_("Dachen CP26 Zhuyin"));
 
-FCITX_CONFIGURATION(
-    OxpinyinConfig,
-    OptionWithAnnotation<OxpinyinInputScheme, OxpinyinInputSchemeI18NAnnotation>
-        inputScheme{this, "InputScheme", _("Input scheme"),
-                    OxpinyinInputScheme::FullPinyin};
-    Option<int, IntConstrain> pageSize{
-        this, "PageSize", _("Candidate page size"), 5, IntConstrain(1, 10)};
-    Option<bool> incomplete{this, "Incomplete", _("Incomplete pinyin"), true};
-    Option<bool> fuzzyCCh{this, "FuzzyCCh", _("Fuzzy c and ch"), false};
-    Option<bool> fuzzySSh{this, "FuzzySSh", _("Fuzzy s and sh"), false};
-    Option<bool> fuzzyZZh{this, "FuzzyZZh", _("Fuzzy z and zh"), false};
-    Option<bool> fuzzyFH{this, "FuzzyFH", _("Fuzzy f and h"), false};
-    Option<bool> fuzzyGK{this, "FuzzyGK", _("Fuzzy g and k"), false};
-    Option<bool> fuzzyLN{this, "FuzzyLN", _("Fuzzy l and n"), false};
-    Option<bool> fuzzyLR{this, "FuzzyLR", _("Fuzzy l and r"), false};
-    Option<bool> fuzzyAnAng{this, "FuzzyAnAng", _("Fuzzy an and ang"), false};
-    Option<bool> fuzzyEnEng{this, "FuzzyEnEng", _("Fuzzy en and eng"), false};
-    Option<bool> fuzzyInIng{this, "FuzzyInIng", _("Fuzzy in and ing"), false};
-    Option<bool> correctGnNg{this, "CorrectGnNg", _("Correct gn to ng"), false};
-    Option<bool> correctMgNg{this, "CorrectMgNg", _("Correct mg to ng"), false};
-    Option<bool> correctIouIu{this, "CorrectIouIu", _("Correct iou to iu"),
-                              false};
-    Option<bool> correctUeiUi{this, "CorrectUeiUi", _("Correct uei to ui"),
-                              false};
-    Option<bool> correctUenUn{this, "CorrectUenUn", _("Correct uen to un"),
-                              false};
-    Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"), false};
-    Option<bool> predictWords{this, "PredictWords", _("Predict next word"),
-                              false};
-    Option<bool> spellEnabled{this, "SpellEnabled",
+// Options common to every build. The FCITX_CONFIGURATION* macros paste their
+// arguments verbatim into the generated class body, so preprocessor
+// conditionals must stay OUTSIDE the invocation (#ifdef inside macro
+// arguments is undefined behavior; gcc -Wpedantic and clang
+// -Wembedded-directive both flag it). Feature options are therefore appended
+// by per-build invocations sharing this list, never by an inner #ifdef.
+#define OXPINYIN_CONFIG_COMMON                                                 \
+    OptionWithAnnotation<OxpinyinInputScheme,                                  \
+                         OxpinyinInputSchemeI18NAnnotation>                    \
+        inputScheme{this, "InputScheme", _("Input scheme"),                    \
+                    OxpinyinInputScheme::FullPinyin};                          \
+    Option<int, IntConstrain> pageSize{                                        \
+        this, "PageSize", _("Candidate page size"), 5, IntConstrain(1, 10)};   \
+    Option<bool> incomplete{this, "Incomplete", _("Incomplete pinyin"), true}; \
+    Option<bool> fuzzyCCh{this, "FuzzyCCh", _("Fuzzy c and ch"), false};       \
+    Option<bool> fuzzySSh{this, "FuzzySSh", _("Fuzzy s and sh"), false};       \
+    Option<bool> fuzzyZZh{this, "FuzzyZZh", _("Fuzzy z and zh"), false};       \
+    Option<bool> fuzzyFH{this, "FuzzyFH", _("Fuzzy f and h"), false};          \
+    Option<bool> fuzzyGK{this, "FuzzyGK", _("Fuzzy g and k"), false};          \
+    Option<bool> fuzzyLN{this, "FuzzyLN", _("Fuzzy l and n"), false};          \
+    Option<bool> fuzzyLR{this, "FuzzyLR", _("Fuzzy l and r"), false};          \
+    Option<bool> fuzzyAnAng{this, "FuzzyAnAng", _("Fuzzy an and ang"), false}; \
+    Option<bool> fuzzyEnEng{this, "FuzzyEnEng", _("Fuzzy en and eng"), false}; \
+    Option<bool> fuzzyInIng{this, "FuzzyInIng", _("Fuzzy in and ing"), false}; \
+    Option<bool> correctGnNg{this, "CorrectGnNg", _("Correct gn to ng"),       \
+                             false};                                           \
+    Option<bool> correctMgNg{this, "CorrectMgNg", _("Correct mg to ng"),       \
+                             false};                                           \
+    Option<bool> correctIouIu{this, "CorrectIouIu", _("Correct iou to iu"),    \
+                              false};                                          \
+    Option<bool> correctUeiUi{this, "CorrectUeiUi", _("Correct uei to ui"),    \
+                              false};                                          \
+    Option<bool> correctUenUn{this, "CorrectUenUn", _("Correct uen to un"),    \
+                              false};                                          \
+    Option<bool> correctUeVe{this, "CorrectUeVe", _("Correct ue to ve"),       \
+                             false};                                           \
+    Option<bool> predictWords{this, "PredictWords", _("Predict next word"),    \
+                              false};                                          \
+    Option<bool> spellEnabled{this, "SpellEnabled",                            \
                               _("Show English candidates"), true};
+// No full-width config option: full-width is a delegated toggle owned by
+// the optional `fullwidth` module (its own status-area Action + hotkey),
+// wired in activate() alongside chttrans. The module's CommitFilter fires
+// only for input contexts carrying its Action, so adding the Action is
+// what enables it; when the module is absent the toggle simply does not
+// appear.
+
 #ifdef OXPINYIN_ENABLE_CLOUDPINYIN
-    // Cloud Pinyin (optional, delegated to chinese-addons' cloudpinyin module).
-    // Defaults mirror fcitx5-chinese-addons: off by default; when on, the
-    // cloud row lands at the 1-based CloudPinyinIndex slot. These options
-    // exist ONLY in the ENABLE_CLOUDPINYIN build — the self-contained build
-    // has no cloud config, keeping it byte-for-byte the baseline.
-    Option<bool> cloudPinyinEnabled{this, "CloudPinyinEnabled",
-                                    _("Enable Cloud Pinyin"), false};
-    Option<int, IntConstrain> cloudPinyinIndex{
-        this, "CloudPinyinIndex", _("Cloud Pinyin Candidate Order"), 2,
+// Cloud Pinyin (optional, delegated to chinese-addons' cloudpinyin module).
+// Defaults mirror fcitx5-chinese-addons: off by default; when on, the
+// cloud row lands at the 1-based CloudPinyinIndex slot. These options exist
+// ONLY in the ENABLE_CLOUDPINYIN build — the self-contained build has no
+// cloud config, keeping it byte-for-byte the baseline.
+#define OXPINYIN_CONFIG_OPTIONAL                                               \
+    Option<bool> cloudPinyinEnabled{this, "CloudPinyinEnabled",                \
+                                    _("Enable Cloud Pinyin"), false};          \
+    Option<int, IntConstrain> cloudPinyinIndex{                                \
+        this, "CloudPinyinIndex", _("Cloud Pinyin Candidate Order"), 2,        \
         IntConstrain(1, 10)};
+#else
+#define OXPINYIN_CONFIG_OPTIONAL
 #endif
-    // No full-width config option: full-width is a delegated toggle owned by
-    // the optional `fullwidth` module (its own status-area Action + hotkey),
-    // wired in activate() alongside chttrans. The module's CommitFilter fires
-    // only for input contexts carrying its Action, so adding the Action is
-    // what enables it; when the module is absent the toggle simply does not
-    // appear.
-    Option<bool> chinesePunctuation{this, "ChinesePunctuation",
-                                    _("Use Chinese punctuation"), true};);
+
+FCITX_CONFIGURATION(OxpinyinConfig,
+                    // The expansion is hand-formatted; clang-format must not
+                    // mangle the backslash-continued option lists.
+                    // clang-format off
+    OXPINYIN_CONFIG_COMMON OXPINYIN_CONFIG_OPTIONAL
+                        // clang-format on
+                        Option<bool>
+                            chinesePunctuation{this, "ChinesePunctuation",
+                                               _("Use Chinese punctuation"),
+                                               true};);
 
 } // namespace fcitx
 
