@@ -1,0 +1,26 @@
+# Static analysis gate. Deliberately narrow: every check below catches a
+# defect class this project cares about at the fcitx/engine boundary
+# (lifetimes, moves, narrowing at the C ABI, silent loss in conditionals).
+# Anything that cannot be kept clean-with-reasons gets dropped here rather
+# than suppressed file by file. Run with a compile_commands.json:
+#   cmake -B build && clang-tidy -p build src/*.cpp
+---
+Checks: >-
+  -*,
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  bugprone-narrowing-conversions,
+  cppcoreguidelines-narrowing-conversions,
+  bugprone-unchecked-optional-access,
+  performance-for-range-copy,
+  performance-unnecessary-copy-initialization,
+  performance-inefficient-string-concatenation,
+  readability-container-size-empty,
+  modernize-use-override,
+  modernize-use-emplace,
+  clang-analyzer-core.*,
+  clang-analyzer-cplusplus.*,
+  clang-analyzer-deadcode.DeadStores
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'src/[^/]*\.h$'
+FormatStyle: file
