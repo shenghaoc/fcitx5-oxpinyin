@@ -60,8 +60,9 @@ as author/committer.
 
 ## Reporting issues
 
-Include: the addon version/commit, which engine backend and version
-(`ENGINE=` setting), the fcitx5 version, how the engine's model data is
+Include: the addon version/commit, which engine is installed under
+libpinyin's name (the distro libpinyin or an oxpinyin build) and its
+version, the fcitx5 version, how the engine's model data is
 provisioned (relevant environment variables), and the fcitx5 diagnostic log
 around the failure — initialization problems almost always name the missing
 piece there. See the README's "Engine model data" section for what the

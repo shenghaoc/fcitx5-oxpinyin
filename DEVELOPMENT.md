@@ -1,7 +1,7 @@
 # Development guide
 
 This is the developer-facing companion to the README: prerequisites, every
-CMake option, the two engine-backend workflows, sanitizer builds, and the
+CMake option, the oxpinyin workflow, sanitizer builds, and the
 house rules that keep commits consistent. For binding project rules (engine
 API contract, safety policy, gates), [AGENTS.md](AGENTS.md) is authoritative;
 this file summarizes.
@@ -17,11 +17,10 @@ A Linux environment with:
 - fcitx5-chinese-addons development files — the punctuation module is a
   **hard** dependency of the addon, at build time (public header +
   `Fcitx5Module` Punctuation component) and at runtime
-- One engine visible to pkg-config:
-  - the distribution `libpinyin` (its `.pc` file plus model data — what
-    distro packages normally ship), or
-  - oxpinyin built from source (see below; requires Rust, Cargo, and
-    cargo-c for `cargo cinstall`)
+- `libpinyin` visible to pkg-config — the distribution package (its `.pc`
+  file plus model data — what distro packages normally ship), or an
+  oxpinyin build exporting the same `libpinyin.pc` (see below; requires
+  Rust, Cargo, and cargo-c for `cargo cinstall`)
 - Optional additions for feature builds:
   - `ENABLE_CLOUDPINYIN`: chinese-addons' cloudpinyin module (development
     files for the build, the module at test time)
@@ -44,7 +43,6 @@ so any distro providing equivalent packages works.
 
 | Option                     | Default     | Effect                                                                                                          |
 | -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `-DENGINE=`                | `libpinyin` | `libpinyin` or `oxpinyin`: selects the pkg-config engine module, the compiled-in system-data directory, and packaging dependency metadata. The addon source is identical for both. |
 | `-DENABLE_TEST=`           | `ON`        | Builds the headless test harness ([TESTING.md](TESTING.md))                                                     |
 | `-DENABLE_CLOUDPINYIN=`    | `OFF`       | Compiles the optional Cloud Pinyin integration; adds cloudpinyin as a manifest optional-dependency              |
 | `-DENABLE_LUA=`            | `OFF`       | Compiles the optional lua-driven candidates and installs `src/oxpinyin.lua` (date/time demo extension)          |
@@ -77,8 +75,12 @@ and waits for go/no-go ([AGENTS.md](AGENTS.md)).
 
 ## Working against oxpinyin from source
 
-The default `ENGINE=libpinyin` needs nothing beyond distro packages. To
-develop against the oxpinyin Rust engine instead:
+The default build needs nothing beyond distro packages. To develop against
+the oxpinyin Rust engine instead, shadow libpinyin in pkg-config: oxpinyin's
+capi installs a `libpinyin.pc` under the same pkg-config name (pointing at
+its own `libpinyin_capi`), so putting its pkgconfig directory first on
+`PKG_CONFIG_PATH` makes the addon — which links `libpinyin`
+unconditionally — configure and build against oxpinyin:
 
 ```sh
 git clone https://github.com/shenghaoc/oxpinyin ../oxpinyin
@@ -86,7 +88,7 @@ cd ../oxpinyin
 cargo cinstall -p oxpinyin-capi --prefix=$HOME/.local/oxpinyin --libdir=lib
 cd ../fcitx5-oxpinyin
 export PKG_CONFIG_PATH=$HOME/.local/oxpinyin/lib/pkgconfig:$PKG_CONFIG_PATH
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DENGINE=oxpinyin \
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
       -DOXPINYIN_SYSTEM_DATA_DIR=/path/to/exported/engine/data \
       -DOXPINYIN_USER_DATA_DIR=$(mktemp -d)
 cmake --build build && ctest --test-dir build --output-on-failure

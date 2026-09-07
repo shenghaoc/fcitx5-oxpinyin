@@ -57,24 +57,28 @@ only.
 
 ## Engine backend selection
 
-The identical suite runs against either backend: configure with
-`-DENGINE=libpinyin` (default; uses the distribution libpinyin and finds its
-model data automatically) or `-DENGINE=oxpinyin` (needs oxpinyin installed
-for pkg-config plus explicit data directories, see below). Comparing
-results between the two is how frontend-vs-engine regressions get told
-apart; full parity between engines is a release criterion, not a claim.
+The identical suite runs against whichever engine is installed under
+libpinyin's name. The default configure uses the distribution libpinyin and
+finds its model data automatically; an oxpinyin engine is selected by
+shadowing libpinyin in pkg-config with its exported `libpinyin.pc` (see
+[DEVELOPMENT.md](DEVELOPMENT.md)) and needs explicit data directories, see
+below. Comparing results between the two is how frontend-vs-engine
+regressions get told apart; full parity between engines is a release
+criterion, not a claim.
 
 ## Engine data requirements for tests
 
 Every engine-loading runner needs valid system model data, and what that
-means depends on `-DENGINE=`:
+means depends on the installed engine:
 
 - `libpinyin` (default): the data directory shipped by its distribution
   package (`table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
   `bigram.db`, …) — located automatically on any normal distro setup.
-- `oxpinyin`: an exported data directory holding the `.redb` tables
-  (`pinyin_index`, `phrase_index`, `bigram`) plus `interpolation2.text`,
-  which installing the engine library alone does not provide.
+- `oxpinyin`: an exported data directory holding the system tables
+  (`pinyin_index`, `phrase_index`, `bigram` — named with the extension of
+  the storage backend compiled into that engine build, `.tkt` for the
+  default tkrzw build) plus `interpolation2.text`, which installing the
+  engine library alone does not provide.
 
 ctest resolves either case automatically (compiled-in path or the
 `OXPINYIN_SYSTEM_DATA_DIR` CMake variable wins); for manual control:
