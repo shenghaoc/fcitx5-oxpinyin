@@ -116,6 +116,31 @@ int zhuyinValue(OxpinyinInputScheme scheme) {
     }
 }
 
+// Last resort of the system-data resolution order: fcitx StandardPaths
+// (PkgData + "oxpinyin"), the directory identified by the engine's exported
+// phrase-index table. The file name is engine- and build-specific: libpinyin
+// ships phrase_index.bin, while an oxpinyin export carries the extension of
+// the storage backend compiled into that engine build — .tkt for the default
+// tkrzw build, with .kct, .lmdb and .redb as the peers. Exactly one of them
+// exists per build and the extension is a naming convention rather than a
+// detected format, so probing a single name would leave this step dead for
+// every other build.
+std::filesystem::path locateStandardPathsSystemDir() {
+    constexpr const char *probes[] = {
+        "oxpinyin/phrase_index.tkt",  "oxpinyin/phrase_index.kct",
+        "oxpinyin/phrase_index.lmdb", "oxpinyin/phrase_index.redb",
+        "oxpinyin/phrase_index.bin",
+    };
+    for (const char *probe : probes) {
+        if (auto located = StandardPaths::global().locate(
+                StandardPathsType::PkgData, probe);
+            !located.empty()) {
+            return located.parent_path();
+        }
+    }
+    return {};
+}
+
 std::pair<std::filesystem::path, std::filesystem::path> resolveDataDirs() {
     // System dir: env override first (keeps the harness and CI off any real
     // session state), then the compiled-in install location if it exists on
@@ -126,10 +151,9 @@ std::pair<std::filesystem::path, std::filesystem::path> resolveDataDirs() {
         systemDir = env;
     } else if (std::filesystem::exists(OXPINYIN_COMPILED_DATADIR)) {
         systemDir = OXPINYIN_COMPILED_DATADIR;
-    } else if (auto located = StandardPaths::global().locate(
-                   StandardPathsType::PkgData, "oxpinyin/phrase_index.redb");
+    } else if (auto located = locateStandardPathsSystemDir();
                !located.empty()) {
-        systemDir = located.parent_path();
+        systemDir = located;
     } else {
         // pinyin_init fails closed on missing tables; pass the compiled-in
         // path so the failure names the expected location.
@@ -266,9 +290,12 @@ OxpinyinEngine::OxpinyinEngine(Instance *instance)
     context_.reset(pinyin_init(systemDir.c_str(), userDir.c_str()));
     if (!context_) {
         OXPINYIN_ERROR()
-            << "pinyin_init failed (data missing in " << systemDir
-            << "; needs pinyin_index/phrase_index/bigram .redb tables and "
-               "interpolation2.text)";
+            << "pinyin_init failed (data missing or incomplete in " << systemDir
+            << "; libpinyin needs table.conf plus pinyin_index.bin, "
+               "phrase_index.bin and bigram.db, an oxpinyin engine needs "
+               "pinyin_index/phrase_index/bigram exported in that build's "
+               "storage-backend format (.tkt for the default tkrzw build) "
+               "plus interpolation2.text)";
         return;
     }
 
