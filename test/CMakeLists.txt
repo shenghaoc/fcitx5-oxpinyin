@@ -186,9 +186,9 @@ endif ()
 
 # Pass the engine data directory to the test as an environment variable;
 # the explicit -DOXPINYIN_SYSTEM_DATA_DIR=... override wins, otherwise
-# the ENGINE_SYSTEM_DATA_DIR resolved by the engine selector is used.
+# the LIBPINYIN_SYSTEM_DATA_DIR resolved from libpinyin's pkgdatadir is used.
 if (NOT OXPINYIN_SYSTEM_DATA_DIR)
-    set(OXPINYIN_SYSTEM_DATA_DIR "${ENGINE_SYSTEM_DATA_DIR}")
+    set(OXPINYIN_SYSTEM_DATA_DIR "${LIBPINYIN_SYSTEM_DATA_DIR}")
 endif ()
 set(OXPINYIN_TEST_ENV "OXPINYIN_SYSTEM_DATA_DIR=${OXPINYIN_SYSTEM_DATA_DIR}")
 if (OXPINYIN_USER_DATA_DIR)
