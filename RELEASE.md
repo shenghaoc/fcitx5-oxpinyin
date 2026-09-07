@@ -13,10 +13,10 @@ no published artifact exists yet.
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend implementation | The full feature set described in the [README](README.md) — schemes (full/double pinyin/Zhuyin), candidate flow with constrained selection, preedit/aux text, prediction, English candidates, punctuation delegation, s2t/full-width toggle surfacing, optional Cloud Pinyin and lua candidates, status-bar toggles — is implemented and covered by the headless suite |
-| Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-08-27: baseline 4/4, cloud 6/6, lua 5/5 in a CI-equivalent Arch container. Sanitizer coverage available locally via `-DENABLE_SANITIZER=ON`. No fuzz smoke tests exist yet |
+| Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-08-27: baseline 4/4, cloud 6/6, lua 5/5 in a CI-equivalent Arch container. Sanitizer coverage available locally via `-DENABLE_SANITIZER=ON`. Fuzz smoke harnesses exist (`test/fuzz`: libFuzzer over the shell's input-handling seam; deterministic smoke on PRs, bounded campaign nightly) |
 | Engine parity           | **Open.** Behavioural parity between libpinyin and oxpinyin is neither proven nor claimed; differences are known to exist (e.g. apostrophe parse handling). Parity is tested by substituting `libpinyin.so.15` under one identically-built addon binary — there are no per-backend build configurations. That test does not exist yet; it is blocked on an oxpinyin engine plus matching data being reachable from CI, and it additionally requires the addon to be compiled against the same libpinyin API version the substituted engine implements (oxpinyin targets 2.11.91 while the distro package may be older) — otherwise a swap compares two APIs and misattributes the difference to the engine |
 | Desktop integration     | **Not started.** Wayland/X11 panels, GTK/Qt client behaviour, browsers, KDE/GNOME specifics have no automated coverage and no completed manual validation pass. A dedicated desktop-integration effort is planned                          |
-| Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated, the staged-install bug below is unfixed, and there are no distro packages |
+| Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated and there are no distro packages; DESTDIR-staged installs are validated by `.github/scripts/package-check.sh`, which asserts the addon conf lands in the staging tree (B1 below) |
 | Internationalization    | Translation catalogs are absent (`po/LINGUAS` empty); gettext scaffolding only                                                                                                                                                    |
 
 The AppStream metainfo currently advertises `0.1.0` (2026-08-23); there is
@@ -106,6 +106,11 @@ integration effort lands, ideally automated afterwards.
   metainfo, but not the addon conf. Fix direction: use a relocatable
   destination (e.g. `${CMAKE_INSTALL_DATADIR}/fcitx5/addon`). Owned by the
   packaging effort; intentionally not touched by documentation changes.
+  Update 2026-09-07: a DESTDIR-staged install contains
+  `usr/share/fcitx5/addon/oxpinyin.conf` — asserted by the passing
+  package check (`.github/scripts/package-check.sh`) — so the escape does
+  not occur on that path; the `--prefix=`-only staging case remains
+  untested.
 - **B2 — version/release entry mismatch.** Metainfo claims release
   `0.1.0`/2026-08-23 while no tag or published release exists. Sync when
   tagging (or strip the entry until then).

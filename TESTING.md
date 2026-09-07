@@ -55,16 +55,22 @@ chinese-addons modules and is only pinned here as far as their status-area
 wiring; training effects of the engine's user model are asserted indirectly
 only.
 
-## Engine backend selection
+## Running against an oxpinyin engine
 
-The identical suite runs against whichever engine is installed under
-libpinyin's name. The default configure uses the distribution libpinyin and
-finds its model data automatically; an oxpinyin engine is selected by
-shadowing libpinyin in pkg-config with its exported `libpinyin.pc` (see
-[DEVELOPMENT.md](DEVELOPMENT.md)) and needs explicit data directories, see
-below. Comparing results between the two is how frontend-vs-engine
-regressions get told apart; full parity between engines is a release
-criterion, not a claim.
+By default the suite runs against the distribution libpinyin and finds its
+model data automatically. For *development* against the oxpinyin Rust
+engine, shadow libpinyin in pkg-config with oxpinyin's exported
+`libpinyin.pc` ([DEVELOPMENT.md](DEVELOPMENT.md) has the recipe) and give
+the tests explicit data directories (see below).
+
+Shadowing is a development convenience, **not** a parity method: it
+configures a *different addon binary* — compiled against oxpinyin's
+`pinyin.h` (oxpinyin targets API 2.11.91; the distro package is older,
+e.g. 2.10.3) with oxpinyin's data directory compiled in — so comparing a
+shadowed build against a distro-libpinyin build compares two APIs and
+misattributes the difference to the engine. Parity is tested by
+substituting `libpinyin.so.15` under one identically-built addon binary;
+that method and its open status live in [RELEASE.md](RELEASE.md).
 
 ## Engine data requirements for tests
 
@@ -74,7 +80,8 @@ means depends on the installed engine:
 - `libpinyin` (default): the data directory shipped by its distribution
   package (`table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
   `bigram.db`, …) — located automatically on any normal distro setup.
-- `oxpinyin`: an exported data directory holding the system tables
+- `oxpinyin` (shadowed development build): an exported data directory
+  holding the system tables
   (`pinyin_index`, `phrase_index`, `bigram` — named with the extension of
   the storage backend compiled into that engine build, `.tkt` for the
   default tkrzw build) plus `interpolation2.text`, which installing the
