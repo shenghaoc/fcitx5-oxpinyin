@@ -54,13 +54,15 @@ outside the exported `pinyin.h` surface.
 
 ## Data resolution
 
-`pinyin_init(systemdir, userdir)` fails closed: it needs the exported `.redb`
-tables (`pinyin_index`, `phrase_index`, `bigram`) and a parsable
-`interpolation2.text` in `systemdir`, else returns NULL. `cargo cinstall`
+`pinyin_init(systemdir, userdir)` fails closed: it needs the exported system
+tables (`pinyin_index`, `phrase_index`, `bigram` — the file extension is set
+by the storage backend compiled into that engine build, `.tkt` for the
+default tkrzw build) and a parsable `interpolation2.text` in `systemdir`,
+else returns NULL. `cargo cinstall`
 ships none of that data. The shell resolves at runtime: env
 `OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR` first (this seam keeps
 the harness and CI off any real session state), then the compiled-in
-`${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin`, then fcitx `StandardPaths`
+libpinyin pkgdatadir (`<pkgdatadir>/data`), then fcitx `StandardPaths`
 (`PkgData` + `oxpinyin`).
 
 ## Phases and STOP gates
@@ -72,19 +74,20 @@ status lives in `.kiro/specs/foundation/`.
 ## Build, test, gates
 
 Requirements: CMake ≥ 3.21, C++20, fcitx5 ≥ 5.1.13 dev files,
-`extra-cmake-modules`, and an engine discoverable via pkg-config.
-The CMake option `ENGINE` (default `libpinyin`) selects the pkg-config
-module: `libpinyin` → `pkg_check_modules(... libpinyin)` → `-lpinyin`;
-`oxpinyin` → `pkg_check_modules(... oxpinyin)` → `-lpinyin_capi`. Both
-expose the same `pinyin.h` API; the addon source is unchanged.
+`extra-cmake-modules`, and libpinyin discoverable via pkg-config. The addon
+links `libpinyin` unconditionally: oxpinyin is a drop-in replacement that
+ships libpinyin's SONAME (`libpinyin.so.15`), header (`pinyin.h`) and
+pkg-config name (`libpinyin`), so engine substitution is an install-time
+swap of libpinyin.so.15, not a build-time option.
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release   # ENGINE=libpinyin (default)
+cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure   # data dir auto-resolved
 ```
 
-For oxpinyin: `-DENGINE=oxpinyin` and point at exported tables via
+To build against an oxpinyin checkout, shadow libpinyin in pkg-config with
+the checkout's exported `libpinyin.pc`, and point at exported tables via
 `-DOXPINYIN_SYSTEM_DATA_DIR=<data dir> -DOXPINYIN_USER_DATA_DIR=$(mktemp -d)`.
 
 Gates before any STOP:
@@ -97,8 +100,8 @@ Gates before any STOP:
 ### Pin discipline (the fabricated-SHA lesson, 2026-08-23)
 
 CI now links distro libpinyin (no engine pin needed). This discipline
-still applies when building with `-DENGINE=oxpinyin` against a pinned
-oxpinyin checkout.
+still applies when building against a pinned oxpinyin checkout shadowing
+libpinyin in pkg-config.
 
 - A full-SHA pin is captured from the source of truth at pin time —
   `git rev-parse origin/main` in the engine checkout, or the GitHub API —

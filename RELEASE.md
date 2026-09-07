@@ -7,14 +7,14 @@ the test suite, and real runs — and dated so staleness is detectable.
 
 ## Current release status
 
-Snapshot: **2026-08-27**, version `0.1.0` (from `project()`), no git tag and
+Snapshot: **2026-09-07**, version `0.1.0` (from `project()`), no git tag and
 no published artifact exists yet.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend implementation | The full feature set described in the [README](README.md) — schemes (full/double pinyin/Zhuyin), candidate flow with constrained selection, preedit/aux text, prediction, English candidates, punctuation delegation, s2t/full-width toggle surfacing, optional Cloud Pinyin and lua candidates, status-bar toggles — is implemented and covered by the headless suite |
 | Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-08-27: baseline 4/4, cloud 6/6, lua 5/5 in a CI-equivalent Arch container. Sanitizer coverage available locally via `-DENABLE_SANITIZER=ON`. No fuzz smoke tests exist yet |
-| Engine parity           | **Open.** Behavioural parity between the libpinyin and oxpinyin backends is neither proven nor claimed; differences are known to exist (e.g. apostrophe parse handling). Same-suite runs against both backends are the standing method to compare |
+| Engine parity           | **Open.** Behavioural parity between libpinyin and oxpinyin is neither proven nor claimed; differences are known to exist (e.g. apostrophe parse handling). Parity is tested by substituting `libpinyin.so.15` under one identically-built addon binary — there are no per-backend build configurations. That test does not exist yet; it is blocked on an oxpinyin engine plus matching data being reachable from CI, and it additionally requires the addon to be compiled against the same libpinyin API version the substituted engine implements (oxpinyin targets 2.11.91 while the distro package may be older) — otherwise a swap compares two APIs and misattributes the difference to the engine |
 | Desktop integration     | **Not started.** Wayland/X11 panels, GTK/Qt client behaviour, browsers, KDE/GNOME specifics have no automated coverage and no completed manual validation pass. A dedicated desktop-integration effort is planned                          |
 | Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated, the staged-install bug below is unfixed, and there are no distro packages |
 | Internationalization    | Translation catalogs are absent (`po/LINGUAS` empty); gettext scaffolding only                                                                                                                                                    |
@@ -50,8 +50,7 @@ Only check items with concrete, reproducible evidence.
 ### Functionality
 
 - [ ] Frontend feature set declared complete by the maintainer
-- [ ] libpinyin backend validated against the full suite
-- [ ] oxpinyin backend validated against the full suite
+- [ ] libpinyin.so.15 substitution run validated against the full suite (an oxpinyin engine swapped in under one identically-built addon binary)
 - [ ] libpinyin/oxpinyin behavioural parity investigated and differences dispositioned
 - [ ] Supported oxpinyin database/model backends validated where applicable
 

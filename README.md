@@ -2,10 +2,11 @@
 
 A [fcitx5](https://fcitx-im.org) input-method addon for Simplified-Chinese
 pinyin — full pinyin, double pinyin, and Zhuyin — driven through the
-libpinyin-compatible C ABI (`pinyin.h`). It can be built against stock
-[libpinyin](https://github.com/libpinyin/libpinyin) or against
+libpinyin-compatible C ABI (`pinyin.h`). It links stock
+[libpinyin](https://github.com/libpinyin/libpinyin) unconditionally;
 [oxpinyin](https://github.com/shenghaoc/oxpinyin), a Rust reimplementation
-that exports the same C ABI.
+that exports the same C ABI, substitutes for it at install time (see
+"Engine substitution" below).
 
 **Status:** active development toward version 0.1.0. The frontend feature set
 described below is implemented and covered by a headless regression suite;
@@ -24,7 +25,7 @@ engine-side and reaches the shell only across the exported C ABI.
 | ------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fcitx5 addon        | this repo (`src/`)           | key-event handling, preedit and auxiliary text, candidate presentation and selection, commit, configuration, status-bar actions, optional module integrations |
 | Input-method engine | oxpinyin (Rust) or libpinyin | syllable parsing, decoding, candidate generation and ranking, prediction, the user model, persistence                                                        |
-| Engine model data   | installed separately         | read-only system tables (`*.redb`, `interpolation2.text`) and a writable per-user directory                                                                  |
+| Engine model data   | installed separately         | read-only system tables and a writable per-user directory                                                                                                     |
 
 The shell calls only the high-level exported surface of `pinyin.h`
 (`pinyin_init`, `pinyin_parse_more_*`, `pinyin_guess_sentence` /
@@ -73,45 +74,49 @@ Known behavioural limitations worth knowing before relying on the addon:
   dedicated end-to-end composition test yet.
 - There are no translation catalogs yet (`po/LINGUAS` is empty).
 
-## Engine backends
+## Engine substitution
 
-CMake selects the engine with `-DENGINE=` (`libpinyin` — the default — or
-`oxpinyin`). The switch changes only which pkg-config module is linked,
-where system model data is expected by default, and packaging dependency
-metadata; the addon source is identical either way. The point is to exercise
-**the same fcitx5 frontend behaviour against either backend**, so frontend
-regressions can be told apart from engine differences.
+The addon links `libpinyin` unconditionally; there is no build-time engine
+switch. [oxpinyin](https://github.com/shenghaoc/oxpinyin) is a drop-in
+replacement for libpinyin's C ABI — it ships libpinyin's SONAME
+(`libpinyin.so.15`), header (`pinyin.h`) and pkg-config name (`libpinyin`) —
+so the frontend cannot tell which engine is installed. Substitution happens
+at install time, by replacing `libpinyin.so.15` with the oxpinyin build.
 
-Behavioural parity between the two backends is *not* claimed. Differences do
+Behavioural parity between the two engines is *not* claimed. Differences do
 surface (they have before, e.g. apostrophe handling during parsing); parity
 validation is an explicit release-criterion item in [RELEASE.md](RELEASE.md),
-owned per-backend by the engine projects.
+owned by the engine projects.
 
 ## Engine model data
 
 The engine library alone does nothing without its language-model data:
 
 - **System data (read-only)** — what it must contain depends on the
-  selected backend:
+  installed engine:
   - **libpinyin:** the files its distribution package installs under its
     data directory — `table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
     `bigram.db`, among others. Distro packages ship these, so nothing
     extra is needed on a normal installation.
-  - **oxpinyin:** the exported `.redb` tables (`pinyin_index`,
-    `phrase_index`, `bigram`) plus `interpolation2.text`. These are **not**
-    installed by building the engine library itself; produce them with the
-    engine's data export procedure and make them discoverable via the
-    resolution order below.
-- **User data (writable):** trained user-model files (kept per backend in
+  - **oxpinyin:** the exported system tables (`pinyin_index`,
+    `phrase_index`, `bigram`) plus `interpolation2.text`. The tables carry
+    the extension of the storage backend compiled into that engine build —
+    `.tkt` for the default tkrzw build; `.kct`, `.lmdb` and `.redb` are the
+    peers, exactly one of which exists per build — and the extension is a
+    naming convention, not a detected format. These are **not** installed
+    by building the engine library itself; produce them with the engine's
+    data export procedure and make them discoverable via the resolution
+    order below.
+- **User data (writable):** trained user-model files (kept per engine in
   the user directory).
 
 At startup the shell resolves the two directories in this order:
 
 1. environment override — `OXPINYIN_SYSTEM_DATA_DIR` /
    `OXPINYIN_USER_DATA_DIR`;
-2. the compiled-in location (`${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin` for
-   the oxpinyin backend; libpinyin's own installed data directory
-   otherwise), used only if it exists on disk;
+2. the compiled-in location — libpinyin's installed data directory
+   (`<pkgdatadir>/data`), where an oxpinyin engine wearing libpinyin's name
+   must also place its tables — used only if it exists on disk;
 3. fcitx's `StandardPaths` data lookup (`PkgData` + `oxpinyin`).
 
 The **user** directory is created automatically when missing. If the
@@ -125,14 +130,25 @@ Note that installing an engine development package makes the build succeed
 but does not necessarily ship model data; data provision belongs to the
 backend engine project (for oxpinyin, see its repository).
 
+**Packaging constraint.** Consumers that embed libpinyin — ibus-libpinyin,
+fcitx5-libpinyin — bake libpinyin's data directory into their own binaries
+at their own build time and pass it to `pinyin_init()`. An oxpinyin engine
+wearing libpinyin's name must therefore have its tables findable at
+libpinyin's pkgdatadir: the same path real libpinyin data would occupy.
+`OXPINYIN_SYSTEM_DATA_DIR` remains available as an override, but only this
+addon and test harnesses read it — no other consumer has that lever. How an
+oxpinyin package satisfies the pkgdatadir constraint is an open packaging
+question, not a solved problem.
+
 ## Building from source
 
 Requirements: CMake ≥ 3.21, a C++20 compiler (GCC and Clang are both
 exercised in CI), Ninja or Make, pkg-config, gettext, `extra-cmake-modules`,
 fcitx5 ≥ 5.1.13 development files, fcitx5-chinese-addons development files
-(the punctuation module is a hard dependency), and one engine visible to
-pkg-config — the distribution `libpinyin`, or oxpinyin built from source
-([DEVELOPMENT.md](DEVELOPMENT.md) covers the developer workflow). Optionally,
+(the punctuation module is a hard dependency), and libpinyin visible to
+pkg-config — the distribution package, or an oxpinyin build substituting
+for it ([DEVELOPMENT.md](DEVELOPMENT.md) covers the developer workflow).
+Optionally,
 fcitx5-lua for `ENABLE_LUA`. All configuration options are listed in
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -172,8 +188,9 @@ runtime-dependency validation — is planned as a separate effort; see
 [RELEASE.md](RELEASE.md).
 
 Runtime requirements once installed: fcitx5 ≥ 5.1.13,
-fcitx5-chinese-addons (the punctuation module), the selected engine library
-and its model data, and — depending on build-time options — the cloudpinyin
+fcitx5-chinese-addons (the punctuation module), the engine library
+(`libpinyin`, or an oxpinyin build substituting it) and its model data,
+and — depending on build-time options — the cloudpinyin
 module or fcitx5-lua.
 
 ## Safety notice for developers
@@ -188,7 +205,7 @@ guidance.
 
 ## Documentation map
 
-- [DEVELOPMENT.md](DEVELOPMENT.md) — prerequisites, configure options, backend workflow, house commit rules
+- [DEVELOPMENT.md](DEVELOPMENT.md) — prerequisites, configure options, oxpinyin workflow, house commit rules
 - [TESTING.md](TESTING.md) — the test architecture and every ctest runner explained
 - [RELEASE.md](RELEASE.md) — current release status, known limitations, release checklist
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution process and commit conventions
