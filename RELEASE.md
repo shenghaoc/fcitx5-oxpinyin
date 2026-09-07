@@ -100,17 +100,18 @@ integration effort lands, ideally automated afterwards.
   `src/CMakeLists.txt` installs `oxpinyin-addon.conf` (renamed
   `addon/oxpinyin.conf`) to `"${FCITX_INSTALL_PKGDATADIR}/addon"`, which
   fcitx5 defines as an **absolute** path (`/usr/share/fcitx5`). With
-  `cmake --install build --prefix=<staging>` (or DESTDIR/component-based
-  packaging) that file escapes the staging tree — observed 2026-08-27: the
-  staged install contained the `.so`, the input-method conf, and the
-  metainfo, but not the addon conf. Fix direction: use a relocatable
-  destination (e.g. `${CMAKE_INSTALL_DATADIR}/fcitx5/addon`). Owned by the
-  packaging effort; intentionally not touched by documentation changes.
-  Update 2026-09-07: a DESTDIR-staged install contains
-  `usr/share/fcitx5/addon/oxpinyin.conf` — asserted by the passing
-  package check (`.github/scripts/package-check.sh`) — so the escape does
-  not occur on that path; the `--prefix=`-only staging case remains
-  untested.
+  `cmake --install build --prefix=<staging>` that file escapes the staging
+  tree — `--prefix=` does not re-root an absolute destination — observed
+  2026-08-27: the staged install contained the `.so`, the input-method
+  conf, and the metainfo, but not the addon conf. Fix direction: use a
+  relocatable destination (e.g. `${CMAKE_INSTALL_DATADIR}/fcitx5/addon`).
+  Owned by the packaging effort; intentionally not touched by
+  documentation changes.
+  Update 2026-09-07: DESTDIR staging is unaffected — CMake prepends
+  `DESTDIR` to absolute destinations — and a DESTDIR-staged install does
+  contain `usr/share/fcitx5/addon/oxpinyin.conf`, asserted by the passing
+  package check (`.github/scripts/package-check.sh`). The `--prefix=`-only
+  staging case is the one that escapes, and remains untested.
 - **B2 — version/release entry mismatch.** Metainfo claims release
   `0.1.0`/2026-08-23 while no tag or published release exists. Sync when
   tagging (or strip the entry until then).
