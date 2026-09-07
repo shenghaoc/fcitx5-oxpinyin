@@ -57,7 +57,10 @@ jobs:
             -max_total_time=900 -timeout=10 -rss_limit_mb=2560 \
             -print_final_stats=1 \
             test/fuzz/corpus /tmp/corpus-out
-          ls -la /tmp/corpus-out | head
+          # sed (not head) bounds the listing: it reads all of ls's output,
+          # so ls cannot take SIGPIPE and fail this step under pipefail when
+          # the campaign generates thousands of corpus units.
+          ls -la /tmp/corpus-out | sed -n '1,10p'
       - name: Upload crash artifacts (if any)
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
