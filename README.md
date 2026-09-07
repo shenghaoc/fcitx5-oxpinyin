@@ -128,7 +128,7 @@ is missing* — check the fcitx5 diagnostic log, or set
 
 Note that installing an engine development package makes the build succeed
 but does not necessarily ship model data; data provision belongs to the
-backend engine project (for oxpinyin, see its repository).
+engine project (for oxpinyin, see its repository).
 
 **Packaging constraint.** Consumers that embed libpinyin — ibus-libpinyin,
 fcitx5-libpinyin — bake libpinyin's data directory into their own binaries
@@ -148,9 +148,8 @@ fcitx5 ≥ 5.1.13 development files, fcitx5-chinese-addons development files
 (the punctuation module is a hard dependency), and libpinyin visible to
 pkg-config — the distribution package, or an oxpinyin build substituting
 for it ([DEVELOPMENT.md](DEVELOPMENT.md) covers the developer workflow).
-Optionally,
-fcitx5-lua for `ENABLE_LUA`. All configuration options are listed in
-[DEVELOPMENT.md](DEVELOPMENT.md).
+Optionally, fcitx5-lua for `ENABLE_LUA`. All configuration options are
+listed in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -168,9 +167,9 @@ All tests run headless through fcitx5's TestFrontend — nothing here touches
 your session input method. On a system where the engine's packages normally
 provide the model data (e.g. distro libpinyin), the suite resolves everything
 automatically. [TESTING.md](TESTING.md) documents the whole architecture:
-each runner, sanitizer builds, backend selection, and how to point tests at
-explicit model-data directories with `-DOXPINYIN_SYSTEM_DATA_DIR=` /
-`-DOXPINYIN_USER_DATA_DIR=`.
+each runner, sanitizer builds, running against an oxpinyin engine, and how
+to point tests at explicit model-data directories with
+`-DOXPINYIN_SYSTEM_DATA_DIR=` / `-DOXPINYIN_USER_DATA_DIR=`.
 
 ## Installation and packaging status
 
