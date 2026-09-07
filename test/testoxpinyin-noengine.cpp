@@ -24,7 +24,7 @@ using namespace fcitx;
 namespace {
 
 // Engine data resolution FAILS CLOSED: pinyin_init returns null without the
-// exported .redb tables, the engine ctor returns early before wiring any
+// exported system tables, the engine ctor returns early before wiring any
 // state, and OxpinyinEngineFactory::create therefore refuses to hand out the
 // addon (the same observable as a missing hard dependency — see
 // testoxpinyin-punctabsent — reached through the DATA path instead of the
@@ -72,7 +72,7 @@ void testEngineMissingDataFailsClosed(Instance *instance) {
 } // namespace
 
 int main() {
-    // Point the system data dir at an EMPTY directory: no .redb tables, so
+    // Point the system data dir at an EMPTY directory: no system tables, so
     // pinyin_init fails closed. Set before Instance creation so the addon
     // load (lazy, inside exec()) inherits it. The user dir gets an equally
     // throwaway location, keeping the harness off any real session state.
