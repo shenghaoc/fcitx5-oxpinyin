@@ -47,6 +47,7 @@ so any distro providing equivalent packages works.
 | `-DENABLE_CLOUDPINYIN=`    | `OFF`       | Compiles the optional Cloud Pinyin integration; adds cloudpinyin as a manifest optional-dependency              |
 | `-DENABLE_LUA=`            | `OFF`       | Compiles the optional lua-driven candidates and installs `src/oxpinyin.lua` (date/time demo extension)          |
 | `-DENABLE_SANITIZER=`      | `OFF`       | Adds ASan+UBSan instrumentation to the tests                                                                    |
+| `-DLIBPINYIN_SYSTEM_DATA_DIR=` | *from pkg-config* | The **compiled-in** system-data fallback baked into the addon, normally `<libpinyin pkgdatadir>/data`. Set it only when the resolved `libpinyin.pc` defines no `pkgdatadir` (configure fails with that instruction) |
 | `-DOXPINYIN_SYSTEM_DATA_DIR=` | *unset*  | Passed through to the test environment so the addon resolves engine **system** model data there (beats the compiled-in path) |
 | `-DOXPINYIN_USER_DATA_DIR=`   | *unset*  | Same, for the writable **user** model directory                                                                 |
 

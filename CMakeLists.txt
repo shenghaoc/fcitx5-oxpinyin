@@ -24,9 +24,21 @@ include(FeatureSummary)
 
 # The compiled-in system-data fallback is libpinyin's own data directory; an
 # oxpinyin engine wearing libpinyin's name must place its tables there (see
-# README, "Engine model data").
-pkg_get_variable(_LIBPINYIN_PKGDATADIR libpinyin pkgdatadir)
-set(LIBPINYIN_SYSTEM_DATA_DIR "${_LIBPINYIN_PKGDATADIR}/data")
+# README, "Engine model data"). Derived from pkg-config, but overridable: a
+# libpinyin.pc that omits the pkgdatadir variable would otherwise expand to
+# the bare string "/data" and bake that into the binary, turning a
+# configure-time misconfiguration into a runtime "data missing" report.
+# Fail at configure time instead, and name the escape hatch.
+if(NOT LIBPINYIN_SYSTEM_DATA_DIR)
+    pkg_get_variable(_LIBPINYIN_PKGDATADIR libpinyin pkgdatadir)
+    if(NOT _LIBPINYIN_PKGDATADIR)
+        message(FATAL_ERROR
+                "libpinyin.pc defines no pkgdatadir variable, so the "
+                "compiled-in system-data directory cannot be derived from "
+                "pkg-config. Pass -DLIBPINYIN_SYSTEM_DATA_DIR=<dir>.")
+    endif()
+    set(LIBPINYIN_SYSTEM_DATA_DIR "${_LIBPINYIN_PKGDATADIR}/data")
+endif()
 
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 set(CMAKE_CXX_STANDARD 20)
