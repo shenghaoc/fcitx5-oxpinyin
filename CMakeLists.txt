@@ -12,27 +12,21 @@ find_package(Fcitx5Utils REQUIRED)
 # typed call (punctuation_public.h), the way fcitx5's own pinyin does it.
 find_package(Fcitx5Module REQUIRED COMPONENTS Spell TestFrontend Punctuation)
 
-set(ENGINE "libpinyin" CACHE STRING "Engine backend (libpinyin or oxpinyin)")
-set_property(CACHE ENGINE PROPERTY STRINGS libpinyin oxpinyin)
-if(NOT ENGINE MATCHES "^(libpinyin|oxpinyin)$")
-    message(FATAL_ERROR "ENGINE must be libpinyin or oxpinyin, got '${ENGINE}'")
-endif()
-
-if(ENGINE STREQUAL "oxpinyin")
-    pkg_check_modules(ENGINE_PKG REQUIRED IMPORTED_TARGET oxpinyin)
-else()
-    pkg_check_modules(ENGINE_PKG REQUIRED IMPORTED_TARGET libpinyin)
-endif()
+# libpinyin is linked UNCONDITIONALLY: oxpinyin is a drop-in replacement for
+# its C ABI, shipping libpinyin's SONAME (libpinyin.so.15), header (pinyin.h)
+# and pkg-config name (libpinyin). Which engine is installed is an
+# install-time fact the build cannot tell — there is deliberately no
+# engine-selection option here.
+pkg_check_modules(LIBPINYIN REQUIRED IMPORTED_TARGET libpinyin)
 
 include(GNUInstallDirs)
 include(FeatureSummary)
 
-if(ENGINE STREQUAL "oxpinyin")
-    set(ENGINE_SYSTEM_DATA_DIR "${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin")
-else()
-    pkg_get_variable(_LIBPINYIN_PKGDATADIR libpinyin pkgdatadir)
-    set(ENGINE_SYSTEM_DATA_DIR "${_LIBPINYIN_PKGDATADIR}/data")
-endif()
+# The compiled-in system-data fallback is libpinyin's own data directory; an
+# oxpinyin engine wearing libpinyin's name must place its tables there (see
+# README, "Engine model data").
+pkg_get_variable(_LIBPINYIN_PKGDATADIR libpinyin pkgdatadir)
+set(LIBPINYIN_SYSTEM_DATA_DIR "${_LIBPINYIN_PKGDATADIR}/data")
 
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 set(CMAKE_CXX_STANDARD 20)
@@ -70,7 +64,7 @@ if(OXPINYIN_WARNINGS_AS_ERRORS)
     add_compile_options(-Werror)
 endif()
 
-set(CMAKE_BUILD_RPATH "${ENGINE_PKG_LIBRARY_DIRS}")
+set(CMAKE_BUILD_RPATH "${LIBPINYIN_LIBRARY_DIRS}")
 
 option(ENABLE_TEST "Build test" ON)
 
@@ -141,13 +135,13 @@ set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CPACK_PACKAGE_CONTACT "Shenghao Chen <shenghaoc@outlook.com>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "Pinyin input method for fcitx5, powered by the ${ENGINE} engine")
+    "Pinyin input method for fcitx5")
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
 # fcitx5-chinese-addons is a hard runtime dependency: the addon does not load
 # without its punctuation module ([Addon/Dependencies]).
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-chinese-addons, ${ENGINE}")
-set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, fcitx5-chinese-addons, ${ENGINE}")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-chinese-addons, libpinyin")
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, fcitx5-chinese-addons, libpinyin")
 include(CPack)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

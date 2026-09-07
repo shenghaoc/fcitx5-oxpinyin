@@ -7,7 +7,7 @@ configure_file(oxpinyin_paths.h.in oxpinyin_paths.h)
 # module itself is reached at runtime over the addon ABI).
 target_link_libraries(oxpinyin Fcitx5::Core Fcitx5::Config
                       Fcitx5::Module::Spell Fcitx5::Module::Punctuation
-                      PkgConfig::ENGINE_PKG)
+                      PkgConfig::LIBPINYIN)
 target_include_directories(oxpinyin PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # ENABLE_CLOUDPINYIN pulls in the cloudpinyin module's public header (the
