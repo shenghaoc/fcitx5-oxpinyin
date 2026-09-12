@@ -182,9 +182,10 @@ no DEB/RPM, no AUR entry). What exists today:
   off the install rules. These are **not** distro-quality packages and have
   not been validated.
 
-Packaging work — proper debian/ and .spec packaging, install-tree and
-runtime-dependency validation — is planned as a separate effort; see
-[RELEASE.md](RELEASE.md).
+Packaging work — proper debian/ and .spec packaging, `--prefix=`-staged
+install validation, and runtime-dependency validation — is planned as a
+separate effort; DESTDIR-staged installs are already validated in CI by
+`.github/scripts/package-check.sh`. See [RELEASE.md](RELEASE.md).
 
 Runtime requirements once installed: fcitx5 ≥ 5.1.13,
 fcitx5-chinese-addons (the punctuation module), the engine library
