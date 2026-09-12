@@ -7,13 +7,13 @@ the test suite, and real runs — and dated so staleness is detectable.
 
 ## Current release status
 
-Snapshot: **2026-09-07**, version `0.1.0` (from `project()`), no git tag and
+Snapshot: **2026-09-12**, version `0.1.0` (from `project()`), no git tag and
 no published artifact exists yet.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend implementation | The full feature set described in the [README](README.md) — schemes (full/double pinyin/Zhuyin), candidate flow with constrained selection, preedit/aux text, prediction, English candidates, punctuation delegation, s2t/full-width toggle surfacing, optional Cloud Pinyin and lua candidates, status-bar toggles — is implemented and covered by the headless suite |
-| Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-08-27: baseline 4/4, cloud 6/6, lua 5/5 in a CI-equivalent Arch container. Sanitizer coverage available locally via `-DENABLE_SANITIZER=ON`. Fuzz smoke harnesses exist (`test/fuzz`: libFuzzer over the shell's input-handling seam; deterministic smoke on PRs, bounded campaign nightly) |
+| Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-09-07 at 02750dd: baseline 5/5, cloud 7/7, lua 6/6 in a CI-equivalent Arch container. Sanitizer suite clean under ASan+UBSan on the same date (clang, RelWithDebInfo) and run in CI as `check-sanitizer`. Fuzz smoke harnesses exist (`test/fuzz`: libFuzzer over the shell's input-handling seam; deterministic smoke on PRs, bounded campaign nightly) |
 | Engine parity           | **Open.** Behavioural parity between libpinyin and oxpinyin is neither proven nor claimed; differences are known to exist (e.g. apostrophe parse handling). Parity is tested by substituting `libpinyin.so.15` under one identically-built addon binary — there are no per-backend build configurations. That test does not exist yet; it is blocked on an oxpinyin engine plus matching data being reachable from CI, and it additionally requires the addon to be compiled against the same libpinyin API version the substituted engine implements (oxpinyin targets 2.11.91 while the distro package may be older) — otherwise a swap compares two APIs and misattributes the difference to the engine |
 | Desktop integration     | **Not started.** Wayland/X11 panels, GTK/Qt client behaviour, browsers, KDE/GNOME specifics have no automated coverage and no completed manual validation pass. A dedicated desktop-integration effort is planned                          |
 | Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated and there are no distro packages; DESTDIR-staged installs are validated by `.github/scripts/package-check.sh`, which asserts the addon conf lands in the staging tree (B1 below) |
@@ -56,11 +56,11 @@ Only check items with concrete, reproducible evidence.
 
 ### Testing
 
-- [x] TestFrontend suite passes (baseline + optional variants; verified 2026-08-27)
-- [x] Regression suite passes (same run)
-- [ ] Sanitizer suite passes on the current tree (`-DENABLE_SANITIZER=ON`; rerun at release time)
-- [ ] Static analysis passes (not wired up yet)
-- [ ] Fuzz smoke tests pass (not written yet)
+- [x] TestFrontend suite passes (baseline + optional variants; verified 2026-09-07 at 02750dd: baseline 5/5, cloud 7/7, lua 6/6)
+- [x] Regression suite passes (same runs)
+- [x] Sanitizer suite passes on the current tree (verified 2026-09-07 at 02750dd: 5/5 under ASan+UBSan, clang/RelWithDebInfo via `.github/scripts/build-test.sh`; also a CI job, `check-sanitizer`, since fd32b32; rerun at release time)
+- [x] Static analysis passes (clang-tidy over `src/oxpinyin.cpp` + `src/englishness.cpp` — zero findings, 2026-09-07 at 02750dd; a CI job, `static-analysis`, since fd32b32)
+- [x] Fuzz smoke tests pass (`fuzz-englishness-smoke` — libFuzzer replays the checked-in seed corpus plus 2000 deterministic runs — green 2026-09-07 at 02750dd; PR gate `fuzz-smoke` in CI, bounded campaign on the nightly schedule)
 - [ ] Real desktop testing completed (pending dedicated effort)
 
 ### Desktop
@@ -79,18 +79,18 @@ integration effort lands, ideally automated afterwards.
 
 ### Packaging
 
-- [ ] Install-tree validated in a clean staging environment (see blocker B1)
+- [ ] Install-tree validated in a clean staging environment (see blocker B1) — DESTDIR staging is validated: `.github/scripts/package-check.sh`, green 2026-09-07 at 02750dd, asserts the addon conf lands in the stage; the `--prefix=` case still escapes the tree (re-observed 2026-09-07) and has no automated coverage, so this stays open until B1 is fixed
 - [ ] Runtime dependencies validated on a minimal installation
-- [ ] Package metadata validated (`metainfo`, addons confs)
+- [ ] Package metadata validated (`metainfo`, addons confs) — package-check asserts the files land, not their content; full validation needs metainfo content checks (e.g. `appstreamcli validate`) plus conf metadata linting; the headless harness parses the built addon/input-method confs on every run, which exercises function, not packaged metadata
 - [x] Model data installation documented (README "Engine model data")
 - [ ] DEB/RPM packaging validated (CPack output is raw scaffolding today)
 - [ ] Distro packaging requirements documented (debian/, .spec, dependencies incl. engine *data* packages)
 
 ### Documentation
 
-- [x] README current (this change set; includes accurate status + architecture)
-- [x] Build instructions current (verified against the tree 2026-08-27)
-- [x] Testing instructions current ([TESTING.md](TESTING.md))
+- [x] README current (verified against the tree 2026-09-12; includes accurate status + architecture)
+- [x] Build instructions current (verified against the tree 2026-09-12)
+- [x] Testing instructions current ([TESTING.md](TESTING.md); verified against the tree 2026-09-12)
 - [x] Known limitations documented (above and README)
 - [ ] Release notes prepared
 
@@ -124,9 +124,10 @@ integration effort lands, ideally automated afterwards.
 Documentation must not duplicate or preempt active parallel efforts, so
 these are named here without detail:
 
-- **CI hardening** — static analysis, sanitizer jobs in CI, token
-  permissions and similar security tightening is being advanced as its own
-  workstream.
+- **CI hardening** — the static-analysis, check-sanitizer, fuzz-smoke and
+  package-check jobs landed on main in fd32b32 (2026-08-27); further
+  tightening (workflow permissions are already `contents: read`) continues
+  as its own workstream.
 - **Desktop-integration validation and packaging** — real-desktop test
   passes, packaging quality work, and distro distribution belong to another
   workstream; results will supersede the provisional wording above.
