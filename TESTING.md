@@ -11,8 +11,10 @@ input method (see [DEVELOPMENT.md](DEVELOPMENT.md)).
    run in-process against fcitx5's TestFrontend.
 2. **Sanitizer builds** — the same suite compiled with ASan+UBSan
    (`-DENABLE_SANITIZER=ON`).
-3. **Static analysis / fuzz smoke tests** — not set up yet; tracked as an
-   open item in [RELEASE.md](RELEASE.md).
+3. **Static analysis / fuzz smoke tests** — clang-tidy over the engine
+   sources and a libFuzzer smoke of the input seam run in CI
+   (`static-analysis`, `fuzz-smoke`; a bounded campaign runs on the
+   nightly schedule); status tracked in [RELEASE.md](RELEASE.md).
 4. **Real desktop integration testing** — explicitly *not* covered by this
    repository's automation; it is a separate, currently pending effort (see
    [RELEASE.md](RELEASE.md)). Manual methods are described at the bottom.
@@ -38,6 +40,7 @@ never loaded, not merely switched off:
 | `testoxpinyin`              | always             | The main body: load/passthrough, typing → candidates → commit, backspace/escape, paging, Space-selection, aux-text and client/server preedit reflection, live config round-trips, Zhuyin scheme switching, partial (constrained) selection including unpin-on-backspace, prediction chaining, English-candidate placement and selection, delegated punctuation (expectations read back from the chinese-addons punctuation module itself, never hardcoded), status-toggle action lifecycle |
 | `testoxpinyin-nospell`      | always             | With the Spell module absent from the process, ordinary pinyin is unaffected and uppercase keys stay client keys                                                                  |
 | `testoxpinyin-punctabsent`  | always             | Without the punctuation module the addon **fails to load** (hard-dependency enforcement); keystrokes then pass through untouched                                                  |
+| `testoxpinyin-noengine`   | always             | The system data dir points at an empty directory, so `pinyin_init` fails closed and no addon backs the IM: the name still resolves, keys pass through unfiltered, the panel stays empty, teardown stays leak-free |
 | `testoxpinyin-conv`         | always             | With chttrans + fullwidth enabled, their toggles join the status area exactly once; the whole normal-composition suite passes unchanged                                            |
 | `testoxpinyin-cloudabsent`  | `ENABLE_CLOUDPINYIN` | Cloud code built but the cloudpinyin module not loaded: the guard skips injection, the toggle persists, composition stays intact                                                 |
 | `testoxpinyin-cloudstub`    | `ENABLE_CLOUDPINYIN` | A hermetic in-tree stub cloudpinyin addon fills synchronously, exercising the complete row → select → commit path with **no network**                                             |
