@@ -7,7 +7,7 @@ the test suite, and real runs — and dated so staleness is detectable.
 
 ## Current release status
 
-Snapshot: **2026-09-12**, version `0.1.0` (from `project()`), no git tag and
+Snapshot: **2026-09-15**, version `0.1.0` (from `project()`), no git tag and
 no published artifact exists yet.
 
 | Area                    | Status                                                                                                                                                                                                                             |
@@ -88,9 +88,9 @@ integration effort lands, ideally automated afterwards.
 
 ### Documentation
 
-- [x] README current (verified against the tree 2026-09-12; includes accurate status + architecture)
-- [x] Build instructions current (verified against the tree 2026-09-12)
-- [x] Testing instructions current ([TESTING.md](TESTING.md); verified against the tree 2026-09-12)
+- [x] README current (verified against the tree 2026-09-15; includes accurate status + architecture)
+- [x] Build instructions current (verified against the tree 2026-09-15)
+- [x] Testing instructions current ([TESTING.md](TESTING.md); verified against the tree 2026-09-15)
 - [x] Known limitations documented (above and README)
 - [ ] Release notes prepared
 
