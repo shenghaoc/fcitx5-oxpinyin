@@ -257,6 +257,69 @@ void testEscape(Instance *instance) {
     });
 }
 
+// Internal panel state is insufficient: clients and UIs need notifications.
+void testClientPreeditClearing(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *frontend = instance->addonManager().addon("testfrontend");
+        auto uuid =
+            frontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        ic->setCapabilityFlags(CapabilityFlag::Preedit);
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        int updates = 0;
+        std::string delivered;
+        auto watcher = instance->watchEvent(
+            EventType::InputContextUpdatePreedit,
+            EventWatcherPhase::PostInputMethod, [&](Event &event) {
+                if (static_cast<InputContextEvent &>(event).inputContext() ==
+                    ic) {
+                    ++updates;
+                    delivered = ic->inputPanel().clientPreedit().toString();
+                }
+            });
+        const auto compose = [&]() {
+            FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key("n"), false));
+            FCITX_ASSERT(!delivered.empty());
+            FCITX_ASSERT(!ic->inputPanel().clientPreedit().toString().empty());
+        };
+        const auto clearWith = [&](const Key &key) {
+            compose();
+            const int before = updates;
+            FCITX_ASSERT(
+                frontend->call<ITestFrontend::sendKeyEvent>(uuid, key, false));
+            FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+            FCITX_ASSERT(!ic->inputPanel().candidateList());
+            FCITX_ASSERT(updates > before);
+            FCITX_ASSERT(delivered.empty());
+        };
+        clearWith(Key("Escape"));
+        FCITX_ASSERT(!frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        clearWith(Key("BackSpace"));
+        compose();
+        const auto selected =
+            ic->inputPanel().candidateList()->candidate(0).text().toString();
+        frontend->call<ITestFrontend::pushCommitExpectation>(selected);
+        const int beforeCommit = updates;
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(updates > beforeCommit && delivered.empty());
+        compose();
+        const int beforeReset = updates;
+        ic->reset();
+        FCITX_ASSERT(updates > beforeReset && delivered.empty());
+        compose();
+        const int beforeDeactivate = updates;
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        FCITX_ASSERT(updates > beforeDeactivate && delivered.empty());
+        instance->deactivate();
+        frontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+
 // Phase 2: modifier combos pass through even mid-composition; digit
 // selection commits and clears; Page_Down pages the list.
 void testCandidatesAndPassthrough(Instance *instance) {
@@ -1943,6 +2006,7 @@ int main() {
     instance.addonManager().registerDefaultLoader(nullptr);
 
     testLoadAndPassthrough(&instance);
+    testClientPreeditClearing(&instance);
 #ifndef OXPINYIN_TEST_CONV
     testOptionalModulesAbsent(&instance);
 #endif

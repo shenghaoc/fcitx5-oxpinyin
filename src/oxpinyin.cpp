@@ -1225,6 +1225,7 @@ void OxpinyinState::updateUI() {
     panel.reset();
 
     if (buffer_.empty()) {
+        ic_->updatePreedit();
         ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
         return;
     }
