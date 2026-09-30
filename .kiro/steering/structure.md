@@ -34,10 +34,11 @@ po/     gettext (fcitx5_install_translation)
 - Any client-side constraint/partial-choice reimplementation outside the
   choose/clear_constraint calls.
 - ASan/UBSan findings (fix before proceeding).
-- Any test needing real session IM registration.
+- Any automated test needing real session IM registration, or live-session
+  work without the explicit manual-acceptance authorization in AGENTS.md.
 
 ## Safety
 
-The hard safety rule in AGENTS.md governs all testing. The harness env-seams
-(`OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR`) exist so tests never
+The live-session safety policy in AGENTS.md governs all testing. Harness
+env-seams (`OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR`) exist so tests never
 touch live session state.

@@ -11,10 +11,11 @@ a typical C++ repo, so please read the short ground rules first.
    reached through its C ABI. If something is missing there, it gets fixed
    upstream and exported through the API — never reimplemented or shimmed in
    this shell.
-2. **Never register the addon as your live session input method while
-   developing or testing.** Automated work uses the headless TestFrontend
-   suite; visual checks use a nested compositor or VM. Recovery guidance if
-   anything goes wrong: [DEVELOPMENT.md](DEVELOPMENT.md).
+2. **Keep ordinary development and automation off the live desktop input
+   method.** Automated work uses TestFrontend; routine visual checks prefer a
+   nested compositor or VM. Only explicitly maintainer-authorized manual
+   acceptance may use the live session, under [AGENTS.md](AGENTS.md)'s
+   safeguards. Recovery guidance: [DEVELOPMENT.md](DEVELOPMENT.md).
 3. **Binding working rules** (engine API contract, phased workflow with
    STOP reports, pin discipline) live in [AGENTS.md](AGENTS.md); they apply
    equally to human contributors and coding agents. For tagged areas of the

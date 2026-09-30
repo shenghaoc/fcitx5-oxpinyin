@@ -7,15 +7,15 @@ the test suite, and real runs — and dated so staleness is detectable.
 
 ## Current release status
 
-Snapshot: **2026-09-15**, version `0.1.0` (from `project()`), no git tag and
+Snapshot: **2026-09-30**, version `0.1.0` (from `project()`), no git tag and
 no published artifact exists yet.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend implementation | The full feature set described in the [README](README.md) — schemes (full/double pinyin/Zhuyin), candidate flow with constrained selection, preedit/aux text, prediction, English candidates, punctuation delegation, s2t/full-width toggle surfacing, optional Cloud Pinyin and lua candidates, status-bar toggles — is implemented and covered by the headless suite |
 | Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-09-07 at 02750dd: baseline 5/5, cloud 7/7, lua 6/6 in a CI-equivalent Arch container. Sanitizer suite clean under ASan+UBSan on the same date (clang, RelWithDebInfo) and run in CI as `check-sanitizer`. Fuzz smoke harnesses exist (`test/fuzz`: libFuzzer over the shell's input-handling seam; deterministic smoke on PRs, bounded campaign nightly) |
-| Engine parity           | **Open.** Behavioural parity between libpinyin and oxpinyin is neither proven nor claimed; differences are known to exist (e.g. apostrophe parse handling). Parity is tested by substituting `libpinyin.so.15` under one identically-built addon binary — there are no per-backend build configurations. That test does not exist yet; it is blocked on an oxpinyin engine plus matching data being reachable from CI, and it additionally requires the addon to be compiled against the same libpinyin API version the substituted engine implements (oxpinyin targets 2.11.91 while the distro package may be older) — otherwise a swap compares two APIs and misattributes the difference to the engine |
-| Desktop integration     | **Not started.** Wayland/X11 panels, GTK/Qt client behaviour, browsers, KDE/GNOME specifics have no automated coverage and no completed manual validation pass. A dedicated desktop-integration effort is planned                          |
+| Engine parity           | **Open.** The 2026-09-30 KDE investigation compared representative inputs against pinned libpinyin 2.11.92 and oxpinyin (Tkrzw/model20), finding identical parsing/candidate ordering for tested cases and reproducing learned-state differences under identical persistent state. This is not full parity. The reproducible release gate — build one identical addon binary and substitute only `libpinyin.so.15`, with compatible API, equivalent data/state and options — is not implemented yet and remains the next substantive parity workstream. See [TESTING.md](TESTING.md) for reference revisions and scope |
+| Desktop integration     | **Partial / in progress.** A real Fedora 44 KDE Plasma Wayland manual acceptance pass completed 2026-09-30: Qt/KDE application behaviour, basic Chrome input and clean Plasma/Fcitx restart validated using verified addon/engine binaries. No automated desktop-integration harness exists; X11, GTK and GNOME remain unvalidated. See [TESTING.md](TESTING.md) |
 | Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated and there are no distro packages; DESTDIR-staged installs are validated by `.github/scripts/package-check.sh`, which asserts the addon conf lands in the staging tree (B1 below) |
 | Internationalization    | Translation catalogs are absent (`po/LINGUAS` empty); gettext scaffolding only                                                                                                                                                    |
 
@@ -61,20 +61,20 @@ Only check items with concrete, reproducible evidence.
 - [x] Sanitizer suite passes on the current tree (verified 2026-09-07 at 02750dd: 5/5 under ASan+UBSan, clang/RelWithDebInfo via `.github/scripts/build-test.sh`; also a CI job, `check-sanitizer`, since fd32b32; rerun at release time)
 - [x] Static analysis passes (clang-tidy over `src/oxpinyin.cpp` + `src/englishness.cpp` — zero findings, 2026-09-07 at 02750dd; a CI job, `static-analysis`, since fd32b32)
 - [x] Fuzz smoke tests pass (`fuzz-englishness-smoke` — libFuzzer replays the checked-in seed corpus plus 2000 deterministic runs — green 2026-09-07 at 02750dd; PR gate `fuzz-smoke` in CI, bounded campaign on the nightly schedule)
-- [ ] Real desktop testing completed (pending dedicated effort)
+- [ ] Real desktop testing completed (overall matrix open; KDE/Wayland/Qt and basic Chrome scope passed 2026-09-30; X11/GTK/GNOME remain)
 
 ### Desktop
 
-Desktop items lack any validation infrastructure today; each needs at least
-one recorded manual pass in a controlled environment once the desktop-
-integration effort lands, ideally automated afterwards.
+Checked items record the 2026-09-30 manual Fedora 44 acceptance scope,
+including a clean Plasma/Fcitx restart. No automated desktop harness exists;
+the remaining matrix still requires evidence.
 
-- [ ] Wayland
+- [x] Wayland (Fedora 44 KDE session)
 - [ ] X11
 - [ ] GTK applications
-- [ ] Qt applications
-- [ ] Browser compatibility (client-side preedit quirks)
-- [ ] KDE Plasma
+- [x] Qt applications (KWrite and Konsole Find)
+- [x] Browser compatibility (Chrome basic preedit/selection/commit only; other browsers unvalidated)
+- [x] KDE Plasma (6.7.5; clean logout/login restart validated)
 - [ ] GNOME
 
 ### Packaging
@@ -88,9 +88,9 @@ integration effort lands, ideally automated afterwards.
 
 ### Documentation
 
-- [x] README current (verified against the tree 2026-09-15; includes accurate status + architecture)
+- [x] README current (reviewed 2026-09-30; includes accurate status + architecture)
 - [x] Build instructions current (verified against the tree 2026-09-15)
-- [x] Testing instructions current ([TESTING.md](TESTING.md); verified against the tree 2026-09-15)
+- [x] Testing instructions current ([TESTING.md](TESTING.md); reviewed 2026-09-30)
 - [x] Known limitations documented (above and README)
 - [ ] Release notes prepared
 
@@ -128,9 +128,10 @@ these are named here without detail:
   package-check jobs landed on main in fd32b32 (2026-08-27); further
   tightening (workflow permissions are already `contents: read`) continues
   as its own workstream.
-- **Desktop-integration validation and packaging** — real-desktop test
-  passes, packaging quality work, and distro distribution belong to another
-  workstream; results will supersede the provisional wording above.
+- **Remaining desktop integration and packaging** — X11/GTK/GNOME,
+  additional browser coverage and an automated desktop harness remain open
+  beyond the recorded KDE Wayland pass. Packaging quality and distro
+  distribution remain separate workstreams.
 
 ## Making a release (sketch)
 

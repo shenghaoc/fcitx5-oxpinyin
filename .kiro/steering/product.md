@@ -13,16 +13,20 @@ user-model persistence belong to the engine and stay in the engine repo.
 - Verified here, headless: engine call sequencing, fcitx5 wiring, preedit
   composition, configuration application — all through the TestFrontend
   harness in `test/`.
-- Verified upstream, not here: engine output correctness (pinned by
-  oxpinyin's oracle differentials). Do not re-litigate parity in this repo.
-- Out of scope: full-desktop/KDE integration testing, distribution packaging
-  polish beyond CPack DEB/RPM generation.
+- Engine correctness belongs upstream in oxpinyin's oracle differentials.
+  Representative pinned comparisons accompanied frontend acceptance; full
+  parity and the same-binary substitution gate remain open in RELEASE.md.
+- Manual desktop evidence: Fedora 44 KDE Wayland / Qt / basic Chrome passed
+  2026-09-30, including a clean session restart (see TESTING.md). No automated
+  desktop harness exists; X11/GTK/GNOME remain unvalidated.
+- Distribution packaging polish remains a separate workstream.
 
 ## Non-goals
 
 - No engine logic in C++ (no candidate ranking, no segmentation, no
   constraint bookkeeping).
-- No live-session registration on development machines (see the hard safety
-  rule in AGENTS.md).
+- No live-session registration/manipulation by ordinary development or
+  automation. Explicitly maintainer-authorized manual acceptance is the only
+  exception, under the safeguards in AGENTS.md.
 - No C++ shims for missing engine exports — missing symbols are engine-side
   work (STOP and report).

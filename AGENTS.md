@@ -10,19 +10,34 @@ fcitx5 addon plumbing. Structural template: fcitx5-cskk (C++ shell over a Rust
 engine's C API). Do not move engine logic into C++; do not reach for engine
 internals.
 
-## Hard safety rule (verbatim, non-negotiable)
+## Live-session safety policy
 
-> this addon is NEVER registered as the live session input method on a
-> development machine; all testing goes through the TestFrontend harness; the
-> rare visual check uses a nested compositor (weston/cage) or a VM; document
-> the TTY `pkill fcitx5` escape.
+Agents, automated tests, CI and ordinary development automation MUST NOT
+register or manipulate the live desktop input method. Use the headless
+TestFrontend harness, a nested compositor (weston/cage), a VM or another
+isolated environment. Nested compositors and VMs remain the preferred default
+for routine visual checks.
 
-Background: a mis-registered input method on a live session can leave the
-machine without a usable keyboard (the RHEL ibus lesson). If an experiment ever
-does leave the session input-dead, switch to a TTY (Ctrl+Alt+F3) and run
-`pkill fcitx5`. Every test in this repo runs headless via
-`Fcitx5::Module::TestFrontend`; if a proposed test needs real session IM
-registration, that is a STOP condition — redesign the test, not the rule.
+The sole exception is a **maintainer-explicitly-authorized manual acceptance
+run for a concrete acceptance goal**. Authorization must cover the proposed
+live-session changes; it is not permission for routine autonomous desktop
+testing. Within that scope, shell preparation and diagnostics are permitted,
+provided the run:
+
+- backs up existing Fcitx configuration and makes changes reversible;
+- keeps a known-good input method available;
+- verifies the exact addon and engine binaries actually loaded;
+- uses incremental smoke gates before broader testing;
+- documents recovery: Ctrl+Alt+F3, log in, then `pkill fcitx5`;
+- requires real application composition/commit evidence rather than inferring
+  desktop acceptance from shell tests;
+- has the human perform GUI interactions when automation cannot safely and
+  controllably drive the desktop.
+
+A mis-registered input method can leave the desktop without a usable keyboard.
+Without explicit authorization, any proposed live-session registration or
+manipulation is a STOP condition: redesign the test in isolation. Automated
+repository tests remain headless via `Fcitx5::Module::TestFrontend`.
 
 ## Engine API contract
 

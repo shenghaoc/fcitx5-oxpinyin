@@ -31,7 +31,14 @@ The shell SHALL call only the high-level exported surface of `pinyin.h`
 (listed in AGENTS.md). The per-key accessors and `oxpinyin_init_for_fixtures`
 SHALL NOT be used. Constraint behaviour SHALL NOT be reimplemented in C++.
 
-### REQ-5: Headless verification
+### REQ-5: Headless verification (historical requirement superseded)
+
+The original absolute rule below is retired by the current binding
+[AGENTS.md](../../../AGENTS.md) live-session safety policy. Automated testing
+remains headless/isolated; only explicitly maintainer-authorized manual
+acceptance may use the live session under that policy. The historical text
+is retained for provenance, not as a competing instruction.
+
 All functional verification SHALL go through the fcitx5 TestFrontend harness;
 the addon SHALL NOT be registered as a live session input method on
 development machines.
