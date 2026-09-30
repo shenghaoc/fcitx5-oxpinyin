@@ -22,6 +22,7 @@
 #include <fcitx/instance.h>
 #include <fcitx/statusarea.h>
 #include <fcitx/userinterfacemanager.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -315,6 +316,114 @@ void testClientPreeditClearing(Instance *instance) {
         FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
             uuid, Key("Control+space"), false));
         FCITX_ASSERT(updates > beforeDeactivate && delivered.empty());
+        instance->deactivate();
+        frontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+
+void testPagingNotifications(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *frontend = instance->addonManager().addon("testfrontend");
+        auto *addon = instance->addonManager().addon("oxpinyin", true);
+        auto uuid =
+            frontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        frontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("Control+space"),
+                                                    false);
+        int updates = 0;
+        auto watcher = instance->watchEvent(
+            EventType::InputContextUpdateUI, EventWatcherPhase::PostInputMethod,
+            [&](Event &event) {
+                auto &ui = static_cast<InputContextUpdateUIEvent &>(event);
+                if (ui.inputContext() == ic &&
+                    ui.component() == UserInterfaceComponent::InputPanel) {
+                    ++updates;
+                }
+            });
+        const auto checkPages = [&]() {
+            const auto list = ic->inputPanel().candidateList();
+            auto *pageable = list->toPageable();
+            auto *common = dynamic_cast<CommonCandidateList *>(list.get());
+            FCITX_ASSERT(common && pageable && pageable->totalPages() > 1);
+            const auto first = list->candidate(0).text().toString();
+            const auto pageKey = [&](const Key &key) {
+                const int before = updates;
+                FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+                    uuid, key, false));
+                FCITX_ASSERT(updates > before);
+            };
+            pageKey(Key("Page_Down"));
+            FCITX_ASSERT(pageable->currentPage() == 1);
+            FCITX_ASSERT(
+                list->candidate(0).text().toString() ==
+                common->candidateFromAll(common->pageSize()).text().toString());
+            pageKey(Key("Page_Up"));
+            FCITX_ASSERT(pageable->currentPage() == 0);
+            FCITX_ASSERT(list->candidate(0).text().toString() == first);
+            // Compare boundary behavior to CommonCandidateList itself.
+            CommonCandidateList reference;
+            reference.setPageSize(common->pageSize());
+            for (int i = 0; i < common->totalSize(); ++i) {
+                reference.append<DisplayOnlyCandidateWord>(
+                    Text(std::to_string(i)));
+            }
+            reference.prev();
+            pageKey(Key("Page_Up"));
+            FCITX_ASSERT(pageable->currentPage() == reference.currentPage());
+            pageable->setPage(pageable->totalPages() - 1);
+            reference.setPage(reference.totalPages() - 1);
+            reference.next();
+            pageKey(Key("Page_Down"));
+            FCITX_ASSERT(pageable->currentPage() == reference.currentPage());
+            pageable->setPage(0);
+            pageKey(Key("Page_Down"));
+        };
+        for (char c : std::string("shi")) {
+            frontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false);
+        }
+        checkPages();
+        // Numeric selection belongs to real engine-backed composition rows,
+        // not the display-only list used below to isolate prediction paging.
+        const auto selected =
+            ic->inputPanel().candidateList()->candidate(0).text().toString();
+        frontend->call<ITestFrontend::pushCommitExpectation>(selected);
+        FCITX_ASSERT(
+            frontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("1"), false));
+        RawConfig config;
+        config.setValueByPath("PredictWords", "True");
+        addon->setConfig(config);
+        for (char c : std::string("zhongguo")) {
+            frontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false);
+        }
+        frontend->call<ITestFrontend::pushCommitExpectation>(
+            ic->inputPanel().preedit().toString());
+        frontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("Return"), false);
+        // A genuine prediction list establishes prediction mode. Its only
+        // required cardinality is nonzero: even one engine prediction suffices.
+        FCITX_ASSERT(ic->inputPanel().candidateList() &&
+                     !ic->inputPanel().candidateList()->empty());
+        FCITX_ASSERT(ic->inputPanel().preedit().toString().empty());
+        auto controlled = std::make_unique<CommonCandidateList>();
+        controlled->setPageSize(1);
+        for (int i = 0; i < 3; ++i) {
+            controlled->append<DisplayOnlyCandidateWord>(
+                Text("prediction " + std::to_string(i)));
+        }
+        // Replacing displayed rows does not change the engine's prediction
+        // mode. These rows are paged only, never selected through the engine.
+        ic->inputPanel().setCandidateList(std::move(controlled));
+        checkPages();
+        FCITX_ASSERT(ic->inputPanel().candidateList());
+        const int beforeDismiss = updates;
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        FCITX_ASSERT(updates > beforeDismiss);
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+        config.setValueByPath("PredictWords", "False");
+        addon->setConfig(config);
         instance->deactivate();
         frontend->call<ITestFrontend::destroyInputContext>(uuid);
     });
@@ -2006,6 +2115,7 @@ int main() {
     instance.addonManager().registerDefaultLoader(nullptr);
 
     testLoadAndPassthrough(&instance);
+    testPagingNotifications(&instance);
     testClientPreeditClearing(&instance);
 #ifndef OXPINYIN_TEST_CONV
     testOptionalModulesAbsent(&instance);
