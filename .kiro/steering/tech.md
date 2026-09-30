@@ -8,9 +8,9 @@ Settled decisions; do not relitigate without an explicit design-change STOP.
   Ubuntu 24.04 GCC 13; C++23 is not required). CMake ≥ 3.21.
 - `find_package(Fcitx5Core Fcitx5Utils)` (floor Fcitx5 ≥ 5.1.13, as chewing);
   include `Fcitx5CompilerSettings`, then set C++20.
-- Engine linkage: `pkg_check_modules(OXPINYIN REQUIRED oxpinyin)`. The .pc
-  module is `oxpinyin`; the link flag resolves to `-lpinyin_capi` (SONAME
-  `libpinyin_capi.so.0.1`); header installed as `pinyin.h`.
+- Engine linkage: `pkg_check_modules(LIBPINYIN REQUIRED IMPORTED_TARGET libpinyin)`.
+  Both implementations supply `libpinyin.so.15` and `pinyin.h`; engine
+  substitution is runtime/install-time, not a frontend build option.
 - Addon library: `add_fcitx5_addon` + `PREFIX ""` → `oxpinyin.so` in
   `${CMAKE_INSTALL_LIBDIR}/fcitx5`.
 - Formatting: fcitx5 `.clang-format` (copied from fcitx5-chewing).
@@ -38,17 +38,20 @@ is forbidden; constraint behaviour is engine-side only
 
 `pinyin_init(systemdir, userdir)` fails closed on missing tables/model.
 Resolution order: env `OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR`
-→ compiled-in `${CMAKE_INSTALL_FULL_DATADIR}/oxpinyin` → fcitx
-`StandardPaths` (`PkgData` + `oxpinyin`). CI assembles the data dir from
-`tools/model/fetch-model.sh` (SHA-pinned model20) + `oxpinyin-migrate export`
-(pinned oracle pipeline), cached by engine SHA.
+→ compiled-in `<libpinyin pkgdatadir>/data` → fcitx StandardPaths
+(`PkgData` + `oxpinyin`). Supported engine export/install tooling provides
+complete matching model tables; the library installer alone does not.
+See PACKAGING.md for the consumer data contract.
 
-## Engine pin
+## Engine pins and CI
 
-CI builds the sibling oxpinyin checkout at a **fixed main SHA**
-(`OXPINYIN_SHA` in `.github/workflows/ci.yml`; currently `78b22ee`, which
-contains the §3 constraint merges #145/#146, merge commit `f801cda`). Bumps
-are deliberate, like the oracle pin at `0c5e80e`. Never float on main HEAD.
+Ordinary CI builds against distro libpinyin. The separate same-binary gate
+uses `tools/engine-substitution/pins.env` to pin oxpinyin; that source revision's
+`tools/oracle/oracle-pin.txt` owns the authoritative libpinyin/model20 pins.
+The bootstrap explicitly selects Tkrzw for oracle, engine and data export.
+Run both libraries under one built addon, verify loader paths and hashes,
+and retain unnormalized candidate differences. Never float a pin or equate
+SONAME equality with binary identity.
 
 ## Templates
 
@@ -61,6 +64,6 @@ are deliberate, like the oracle pin at `0c5e80e`. Never float on main HEAD.
 
 ## Unit-test framework policy
 
-None in the scaffold. If pure-logic helpers accrete, adopt Catch2 v3 via
+The suite uses Fcitx TestFrontend and FCITX_ASSERT, with no external framework. If pure-logic helpers accrete, adopt Catch2 v3 via
 FetchContent (designated choice; GoogleTest acceptable if mocking ever
 matters). Do not add it speculatively.

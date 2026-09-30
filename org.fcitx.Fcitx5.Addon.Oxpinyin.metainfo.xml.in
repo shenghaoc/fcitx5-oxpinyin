@@ -13,8 +13,6 @@
   <url type="bugtracker">https://github.com/shenghaoc/fcitx5-oxpinyin/issues</url>
   <url type="vcs-browser">https://github.com/shenghaoc/fcitx5-oxpinyin</url>
   <project_group>Fcitx</project_group>
-  <releases>
-    <release version="0.1.0" date="2026-08-23"/>
-  </releases>
+  <!-- Add the actual release version/date only when the maintainer tags it. -->
   <content_rating type="oars-1.1"/>
 </component>

@@ -11,7 +11,7 @@ that exports the same C ABI, substitutes for it at install time (see
 **Status:** active development toward version 0.1.0. The frontend feature set
 described below is implemented and covered by a headless regression suite;
 one real Fedora/KDE/Wayland acceptance pass is complete. Broader desktop
-coverage and packaging remain outstanding; there is **no released version yet**.
+coverage and full distro packaging remain outstanding; CPack artifacts are validated. there is **no released version yet**.
 See [RELEASE.md](RELEASE.md) for the current release status and checklist.
 
 ## Architecture
@@ -83,10 +83,10 @@ replacement for libpinyin's C ABI — it ships libpinyin's SONAME
 so the frontend cannot tell which engine is installed. Substitution happens
 at install time, by replacing `libpinyin.so.15` with the oxpinyin build.
 
-Behavioural parity between the two engines is *not* claimed. Differences do
-surface (they have before, e.g. apostrophe handling during parsing); parity
-validation is an explicit release-criterion item in [RELEASE.md](RELEASE.md),
-owned by the engine projects.
+Full behavioural parity between the engines is not claimed and is not a
+frontend release criterion. The automated same-binary substitution gate and
+representative comparisons pass for the pinned tested scope as integration
+evidence; engine differences are owned by the oxpinyin repository.
 
 ## Engine model data
 
@@ -98,15 +98,11 @@ The engine library alone does nothing without its language-model data:
     data directory — `table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
     `bigram.db`, among others. Distro packages ship these, so nothing
     extra is needed on a normal installation.
-  - **oxpinyin:** the exported system tables (`pinyin_index`,
-    `phrase_index`, `bigram`) plus `interpolation2.text`. The tables carry
-    the extension of the storage backend compiled into that engine build —
-    `.tkt` for the default tkrzw build; `.kct`, `.lmdb` and `.redb` are the
-    peers, exactly one of which exists per build — and the extension is a
-    naming convention, not a detected format. These are **not** installed
-    by building the engine library itself; produce them with the engine's
-    data export procedure and make them discoverable via the resolution
-    order below.
+  - **oxpinyin:** complete tables/configuration exported by the engine's
+    supported data procedure for its selected backend. The pinned Tkrzw
+    substitution gate uses libpinyin-compatible `table.conf`, `.bin` indexes
+    and `.db` bigram files. The library install does not provide these;
+    [PACKAGING.md](PACKAGING.md) records the data-location contract.
 - **User data (writable):** trained user-model files (kept per engine in
   the user directory).
 

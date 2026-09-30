@@ -6,7 +6,7 @@
 src/    oxpinyin.{h,cpp}; oxpinyin-addon.conf.in.in; oxpinyin.conf.in
 test/   testdir.h.in, testoxpinyin.cpp, addon/ + inputmethod/ (copy targets)
 po/     gettext (fcitx5_install_translation)
-.kiro/  this steering + specs/foundation (phase status)
+.kiro/  current steering + archived specs/foundation (historical record)
 .github/workflows/ci.yml
 ```
 

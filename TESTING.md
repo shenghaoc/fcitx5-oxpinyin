@@ -84,12 +84,11 @@ means depends on the installed engine:
 - `libpinyin` (default): the data directory shipped by its distribution
   package (`table.conf`, `pinyin_index.bin`, `phrase_index.bin`,
   `bigram.db`, …) — located automatically on any normal distro setup.
-- `oxpinyin` (shadowed development build): an exported data directory
-  holding the system tables
-  (`pinyin_index`, `phrase_index`, `bigram` — named with the extension of
-  the storage backend compiled into that engine build, `.tkt` for the
-  default tkrzw build) plus `interpolation2.text`, which installing the
-  engine library alone does not provide.
+- `oxpinyin` (shadowed development build): a complete backend-compatible
+  exported data directory. The pinned Tkrzw bootstrap produces the
+  libpinyin-compatible `.bin`/`.db` tables and `table.conf`; installing the
+  shared library alone does not provide a model. Use the supported bootstrap
+  and consult PACKAGING.md rather than historical backend-extension recipes.
 
 ctest resolves either case automatically (compiled-in path or the
 `OXPINYIN_SYSTEM_DATA_DIR` CMake variable wins); for manual control:
