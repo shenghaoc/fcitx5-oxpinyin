@@ -10,9 +10,9 @@ that exports the same C ABI, substitutes for it at install time (see
 
 **Status:** active development toward version 0.1.0. The frontend feature set
 described below is implemented and covered by a headless regression suite;
-desktop-integration validation and packaging are still outstanding, so there
-is **no released version yet**. See [RELEASE.md](RELEASE.md) for the current
-release status and the release checklist.
+one real Fedora/KDE/Wayland acceptance pass is complete. Broader desktop
+coverage and packaging remain outstanding; there is **no released version yet**.
+See [RELEASE.md](RELEASE.md) for the current release status and checklist.
 
 ## Architecture
 
@@ -195,13 +195,13 @@ module or fcitx5-lua.
 
 ## Safety notice for developers
 
-This addon is **never** registered as the live session input method on a
-development machine; all automated testing goes through the headless
-TestFrontend harness. Visual checks belong in a nested compositor (weston or
-cage) or a VM. If an experiment ever leaves your session without a usable
-keyboard, switch to a TTY (Ctrl+Alt+F3) and run `pkill fcitx5` to restore
-the previous input stack. See [DEVELOPMENT.md](DEVELOPMENT.md) for the full
-guidance.
+Automated tests, CI, agents and ordinary development automation must not
+register or manipulate the live desktop input method. Use TestFrontend or an
+isolated nested compositor/VM. Only explicitly maintainer-authorized manual
+acceptance may use the live session, with backups, reversible changes,
+verified binaries and a known-good input method. Recovery: Ctrl+Alt+F3, log
+in, then `pkill fcitx5`. See [AGENTS.md](AGENTS.md) for the binding policy
+and [DEVELOPMENT.md](DEVELOPMENT.md) for guidance.
 
 ## Documentation map
 

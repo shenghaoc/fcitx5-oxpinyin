@@ -138,19 +138,19 @@ AI-agent identity belongs in `Assisted-by:` only — never in
 
 ## Safety when testing an input method
 
-> This addon is NEVER registered as the live session input method on a
-> development machine; all testing goes through the TestFrontend harness;
-> the rare visual check uses a nested compositor (weston/cage) or a VM;
-> document the TTY `pkill fcitx5` escape.
+Automated tests, CI, agents and ordinary development automation must not
+register or manipulate the live desktop input method. The TestFrontend suite
+runs headless with isolated user data; routine visual checks should use a
+nested compositor (weston/cage), VM or isolated desktop session.
 
-Concretely:
+Only an explicitly maintainer-authorized manual acceptance run for a concrete
+goal may use the live session, under the binding [AGENTS.md](AGENTS.md)
+policy. Back up configuration, make changes reversible, retain a known-good
+input method, verify loaded addon/engine identity, and start with incremental
+smoke gates. Shell results alone do not establish desktop acceptance. The
+human performs graphical interactions when automation cannot safely and
+controllably do so.
 
-- Automated coverage comes exclusively from the headless TestFrontend suite
-  (`ctest`) — it loads the addon inside a sandboxed in-process fcitx5 and
-  never registers anything session-wide.
-- For anything visual, prefer a nested compositor session (weston or cage)
-  or a disposable VM; an isolated container also keeps your desktop IM
-  untouched.
-- If an experiment ever does leave the session input-dead: switch to a TTY
-  (Ctrl+Alt+F3), log in, run `pkill fcitx5`, return to the graphical
-  session.
+Document recovery before the run: switch to a TTY (Ctrl+Alt+F3), log in and
+run `pkill fcitx5`. The completed authorized KDE pass and its limited scope
+are recorded in [TESTING.md](TESTING.md).

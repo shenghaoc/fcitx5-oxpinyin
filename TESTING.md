@@ -2,8 +2,9 @@
 
 Testing an input method has unusual hazard potential — a misbehaving IM can
 leave a desktop without a usable keyboard — so this project's testing is
-deliberately layered, with **nothing** ever registered as a live session
-input method (see [DEVELOPMENT.md](DEVELOPMENT.md)).
+deliberately layered. Automation stays isolated from the live input method;
+explicitly authorized manual acceptance follows the safeguards in
+[AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## The layers
 
@@ -16,8 +17,9 @@ input method (see [DEVELOPMENT.md](DEVELOPMENT.md)).
    (`static-analysis`, `fuzz-smoke`; a bounded campaign runs on the
    nightly schedule); status tracked in [RELEASE.md](RELEASE.md).
 4. **Real desktop integration testing** — explicitly *not* covered by this
-   repository's automation; it is a separate, currently pending effort (see
-   [RELEASE.md](RELEASE.md)). Manual methods are described at the bottom.
+   repository's automation. A manual Fedora 44 KDE Wayland pass completed on
+   2026-09-30; X11, GTK and GNOME remain unvalidated (see
+   [RELEASE.md](RELEASE.md)). Scope and methods are described below.
 
 ## How the headless harness works
 
@@ -66,14 +68,13 @@ engine, shadow libpinyin in pkg-config with oxpinyin's exported
 `libpinyin.pc` ([DEVELOPMENT.md](DEVELOPMENT.md) has the recipe) and give
 the tests explicit data directories (see below).
 
-Shadowing is a development convenience, **not** a parity method: it
-configures a *different addon binary* — compiled against oxpinyin's
-`pinyin.h` (oxpinyin targets API 2.11.91; the distro package is older,
-e.g. 2.10.3) with oxpinyin's data directory compiled in — so comparing a
-shadowed build against a distro-libpinyin build compares two APIs and
-misattributes the difference to the engine. Parity is tested by
-substituting `libpinyin.so.15` under one identically-built addon binary;
-that method and its open status live in [RELEASE.md](RELEASE.md).
+Shadowing is a development convenience, **not** a controlled parity method:
+it can configure a different addon binary, with different headers and data
+paths. The release gate must build one identical addon binary and substitute
+only `libpinyin.so.15`, with compatible API, equivalent model/user data and
+options. That reproducible gate is not implemented yet; representative
+comparisons from the manual investigation do not close it. See
+[RELEASE.md](RELEASE.md).
 
 ## Engine data requirements for tests
 
@@ -117,16 +118,59 @@ leak still fails the run. Rationale for the scoping lives inside the file.
 
 ## Manual and desktop testing
 
-The headless harness cannot see panels, candidate windows, client-app
-preedit behaviour, Wayland/X11 specifics, or multi-application focus flows.
-For occasional visual checks use one of:
+### Automated desktop testing
 
-- a **nested compositor** (weston or cage) running its own fcitx5 instance;
-- a **disposable VM**, where registration as session IM is acceptable;
-- an **isolated container/desktop session**.
+There is no automated desktop-integration harness or desktop CI coverage.
+TestFrontend cannot establish visible candidate-window behaviour, real
+application preedit/commits or Wayland/X11 focus integration. Routine visual
+checks should use a nested compositor with its own Fcitx, a disposable VM or
+another isolated desktop session.
 
-Never swap your daily-driver session input method to test this addon. If a
-session ever ends up without a working keyboard: switch to a TTY
-(Ctrl+Alt+F3) and run `pkill fcitx5`. Systematic desktop-integration
-validation across Wayland/X11/GTK/Qt/browsers/KDE/GNOME remains an open
-release item — see the checklist in [RELEASE.md](RELEASE.md).
+Live-session manual acceptance requires explicit maintainer authorization for
+a concrete goal and all [AGENTS.md](AGENTS.md) safeguards: configuration
+backup, reversible changes, a known-good input method, runtime binary
+verification and incremental smoke gates. The human performs GUI interaction
+when automation cannot safely and controllably do so. Recovery must be
+recorded before testing: Ctrl+Alt+F3, log in, then `pkill fcitx5`.
+
+### Completed manual acceptance — 2026-09-30
+
+An explicitly maintainer-authorized real-desktop pass completed on Fedora 44,
+KDE Plasma 6.7.5, KDE Frameworks/KCoreAddons 6.30.0, Qt 6.11.2 and Fcitx5
+5.1.22 in a Wayland session. Shell preparation/diagnostics accompanied human
+GUI interaction; no autonomous Linux Computer Use drove the desktop.
+Configuration was backed up, changes were reversible, a known-good input
+method remained available, and smoke tests preceded broader testing.
+
+Process maps and hashes verified the real Fcitx daemon loaded the intended
+development addon and Rust engine. The accepted production implementation
+was merged by [PR #18](https://github.com/shenghaoc/fcitx5-oxpinyin/pull/18).
+The engine was oxpinyin `e1d915d0ac2532d4ac496404269005439a524759`, using
+Tkrzw. The behavioural reference was pinned libpinyin 2.11.92
+`074a2219c90feaf962d0d24f034514033ece5f99`, also Tkrzw, with checksum-verified
+model20 and equivalent exported engine data. Fedora libpinyin 2.11.91 was
+not the oracle.
+
+The pass established activation, client preedit, candidate display, Space
+and numeric selection, Page Up/Page Down, Escape cancellation, Backspace
+editing, input-method switching and clean composition after reset. Real
+application coverage included KWrite, Konsole's Find field and basic Chrome
+browser input. After a clean Plasma/Fcitx logout/login restart, separate
+`nihao` and `woaizhongguo` compositions committed `你好我爱中国` into KWrite
+with the verified addon and Rust engine.
+
+The investigation found two adapter notification bugs: clearing client
+preedit omitted a client refresh, and candidate paging omitted an InputPanel
+refresh. PR #18 fixed both; affected manual KDE retests passed.
+
+Pinned representative engine comparisons agreed on parsing and candidate
+ordering for the tested cases. Differences between fresh and live candidate
+alternatives were reproduced exactly by pinned libpinyin using a copy of the
+same persistent learned state, including `user.bin` and `user_bigram.db`.
+They required no adapter ranking change. Traditional output was explained by
+Fcitx's Traditional conversion toggle, not an OXPinyin defect.
+
+This is manual acceptance evidence, not CI coverage or full engine parity.
+X11, GTK and GNOME remain unvalidated; Chrome coverage does not validate
+other browsers. The broader desktop matrix and same-binary engine
+substitution gate remain open in [RELEASE.md](RELEASE.md).
