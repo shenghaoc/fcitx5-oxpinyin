@@ -1,0 +1,46 @@
+name: Engine substitution
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  substitute:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - name: Prerequisites
+        run: >-
+          dnf install -y git gcc-c++ clang cmake make extra-cmake-modules
+          fcitx5-devel fcitx5-chinese-addons-devel libpinyin-devel
+          tkrzw-devel xz-devel lz4-devel libzstd-devel autoconf automake libtool gnome-common ibus-devel
+          sqlite-devel gettext-devel curl tar xz python3 cargo-c patch which wget diffutils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
+          sh /tmp/rustup.sh -y --no-modify-path --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install 1.97.1 --profile minimal
+      - name: Provision pinned libraries and model
+        run: bash tools/engine-substitution/bootstrap.sh "$PWD/build-substitution"
+      - name: Build once and substitute
+        run: |
+          if [ '${{ matrix.compiler }}' = clang ]; then export CC=clang CXX=clang++; fi
+          export PKG_CONFIG_PATH="$PWD/build-substitution/oracle/lib/pkgconfig"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DOXPINYIN_WARNINGS_AS_ERRORS=ON
+          cmake --build build -j2
+          python3 tools/engine-substitution/run.py --build build \
+            --oracle build-substitution/oracle --engine build-substitution/engine \
+            --output build-substitution/evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: substitution-${{ matrix.compiler }}
+          path: build-substitution/evidence

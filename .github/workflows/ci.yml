@@ -7,6 +7,11 @@ on:
   pull_request:
     branches:
       - main
+      - docs/kde-wayland-acceptance
+      - ci/engine-substitution-parity
+      - fix/relocatable-addon-install
+      - packaging/validate-artifacts
+      - test/release-gaps
 
 permissions:
   contents: read

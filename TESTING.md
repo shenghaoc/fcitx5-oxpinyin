@@ -72,8 +72,8 @@ Shadowing is a development convenience, **not** a controlled parity method:
 it can configure a different addon binary, with different headers and data
 paths. The release gate must build one identical addon binary and substitute
 only `libpinyin.so.15`, with compatible API, equivalent model/user data and
-options. That reproducible gate is not implemented yet; representative
-comparisons from the manual investigation do not close it. See
+options. The reproducible gate now lives in `tools/engine-substitution/`; representative
+comparisons alone do not close broader engine parity. See
 [RELEASE.md](RELEASE.md).
 
 ## Engine data requirements for tests
@@ -173,4 +173,30 @@ Fcitx's Traditional conversion toggle, not an OXPinyin defect.
 This is manual acceptance evidence, not CI coverage or full engine parity.
 X11, GTK and GNOME remain unvalidated; Chrome coverage does not validate
 other browsers. The broader desktop matrix and same-binary engine
-substitution gate remain open in [RELEASE.md](RELEASE.md).
+substitution coverage is tracked separately in [RELEASE.md](RELEASE.md).
+
+## Same-binary engine substitution gate
+
+`bash tools/engine-substitution/bootstrap.sh "$PWD/build-substitution"`
+provisions isolated libraries using the pinned oxpinyin checkout's canonical
+oracle/model bootstrap and supported packaging installer. All components use
+Tkrzw; model20 is checksum verified. `pins.env` pins the engine revision;
+that revision owns the oracle/model pins. Build the addon once with the
+oracle prefix first on `PKG_CONFIG_PATH`, then run:
+
+```sh
+python3 tools/engine-substitution/run.py --build build \
+  --oracle build-substitution/oracle --engine build-substitution/engine \
+  --output build-substitution/evidence
+```
+
+The runner executes every configured headless test twice, overrides CTest's
+data/user settings with isolated per-run directories, and substitutes only
+the library search path. Linux loader audit logs prove actual mapped paths;
+`identity.json` records canonical libraries and hashes plus the unchanged
+addon hash. Missing-punctuation tests intentionally map neither addon nor
+engine. Complete fresh-state parsing/candidate captures for nine inputs are
+retained and compared without normalization. A difference fails the gate
+and must be classified; it is never hidden by changing adapter ranking.
+This bounded differential does not claim global engine parity. CI runs GCC
+and Clang and retains evidence even on failure.
