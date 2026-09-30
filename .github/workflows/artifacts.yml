@@ -1,0 +1,65 @@
+name: Package artifacts
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Prerequisites
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False git gcc-c++ cmake make
+          extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
+          libpinyin-devel gettext python3 rpm-build dpkg cpio appstream
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build and inspect artifacts
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build -j2
+          python3 .github/scripts/install-check.py build
+          python3 .github/scripts/artifact-check.py build
+          bash .github/scripts/minimal-runtime.sh build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-validation-evidence
+          path: |
+            build/artifact-evidence.json
+            build/minimal-runtime-*
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Native Debian build and package inspection
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work debian:unstable sh -ec '
+            apt-get update
+            apt-get install -y --no-install-recommends g++ cmake make git \
+              extra-cmake-modules libfcitx5core-dev libfcitx5utils-dev \
+              fcitx5-modules-dev fcitx5-module-punctuation-dev libpinyin15-dev \
+              fcitx5-module-chttrans fcitx5-module-fullwidth \
+              gettext python3 dpkg-dev rpm cpio appstream file
+            cmake -B build-debian -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+              -DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON
+            cmake --build build-debian -j2
+            ctest --test-dir build-debian --output-on-failure
+            python3 .github/scripts/artifact-check.py build-debian
+          '
+      - name: Fresh Debian runtime container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work debian:unstable \
+            bash .github/scripts/debian-runtime.sh build-debian
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debian-package-validation-evidence
+          path: |
+            build-debian/artifact-evidence.json
+            build-debian/debian-runtime-*

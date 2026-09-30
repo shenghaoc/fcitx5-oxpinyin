@@ -247,3 +247,10 @@ if(ENABLE_FUZZ)
     endif()
     add_subdirectory(fuzz)
 endif()
+
+# Not a ctest runner: invoked against extracted/installed package files by
+# artifact validation. TestFrontend is instrumentation, not a package dep.
+add_executable(package-runtime package-runtime.cpp)
+target_link_libraries(package-runtime Fcitx5::Core Fcitx5::Module::TestFrontend)
+target_compile_definitions(package-runtime PRIVATE
+    "OXPINYIN_PACKAGE_LIBDIR=\"${CMAKE_INSTALL_LIBDIR}\"")

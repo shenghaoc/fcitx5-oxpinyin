@@ -152,8 +152,12 @@ set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
 # fcitx5-chinese-addons is a hard runtime dependency: the addon does not load
 # without its punctuation module ([Addon/Dependencies]).
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-chinese-addons, libpinyin")
-set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5, fcitx5-chinese-addons, libpinyin")
+# Debian uses a versioned runtime-library package and a standalone punctuation
+# module. The broad chinese-addons metapackage would pull optional modules in.
+# Native Debian shlibdeps/policy validation is still required before publishing.
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "fcitx5 (>= ${REQUIRED_FCITX_VERSION}), fcitx5-module-punctuation, libpinyin15, libpinyin-data")
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= ${REQUIRED_FCITX_VERSION}, fcitx5-chinese-addons, libpinyin")
 include(CPack)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
