@@ -17,6 +17,8 @@ cmake -B build-pkg -G Ninja \
     -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
 cmake --build build-pkg
 
+python3 "$ROOT/.github/scripts/install-check.py" build-pkg
+
 STAGE="$(mktemp -d)/stage"
 DESTDIR="$STAGE" cmake --install build-pkg
 

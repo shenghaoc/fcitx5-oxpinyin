@@ -31,7 +31,7 @@ if (ENABLE_LUA)
     # imeapi's extension loader picks it up — the same destination
     # chinese-addons' pinyin.lua uses.
     install(FILES oxpinyin.lua
-            DESTINATION "${FCITX_INSTALL_PKGDATADIR}/lua/imeapi/extensions"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/fcitx5/lua/imeapi/extensions"
             COMPONENT config)
 endif ()
 target_compile_definitions(oxpinyin PRIVATE FCITX_GETTEXT_DOMAIN=\"fcitx5-oxpinyin\")
@@ -64,5 +64,5 @@ configure_file(oxpinyin-addon.conf.in.in oxpinyin-addon.conf.in)
 fcitx5_translate_desktop_file("${CMAKE_CURRENT_BINARY_DIR}/oxpinyin-addon.conf.in"
                               oxpinyin-addon.conf)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/oxpinyin-addon.conf"
-        RENAME oxpinyin.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon"
+        RENAME oxpinyin.conf DESTINATION "${CMAKE_INSTALL_DATADIR}/fcitx5/addon"
         COMPONENT config)

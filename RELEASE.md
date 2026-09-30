@@ -79,7 +79,7 @@ the remaining matrix still requires evidence.
 
 ### Packaging
 
-- [ ] Install-tree validated in a clean staging environment (see blocker B1) — DESTDIR staging is validated: `.github/scripts/package-check.sh`, green 2026-09-07 at 02750dd, asserts the addon conf lands in the stage; the `--prefix=` case still escapes the tree (re-observed 2026-09-07) and has no automated coverage, so this stays open until B1 is fixed
+- [x] Install-tree validated in isolated staging (DESTDIR and direct `--prefix=`, with all manifest paths checked; B1 resolved 2026-09-30)
 - [ ] Runtime dependencies validated on a minimal installation
 - [ ] Package metadata validated (`metainfo`, addons confs) — package-check asserts the files land, not their content; full validation needs metainfo content checks (e.g. `appstreamcli validate`) plus conf metadata linting; the headless harness parses the built addon/input-method confs on every run, which exercises function, not packaged metadata
 - [x] Model data installation documented (README "Engine model data")
@@ -96,22 +96,12 @@ the remaining matrix still requires evidence.
 
 ## Release blockers found during documentation audit
 
-- **B1 — staged installs lose the addon config.**
-  `src/CMakeLists.txt` installs `oxpinyin-addon.conf` (renamed
-  `addon/oxpinyin.conf`) to `"${FCITX_INSTALL_PKGDATADIR}/addon"`, which
-  fcitx5 defines as an **absolute** path (`/usr/share/fcitx5`). With
-  `cmake --install build --prefix=<staging>` that file escapes the staging
-  tree — `--prefix=` does not re-root an absolute destination — observed
-  2026-08-27: the staged install contained the `.so`, the input-method
-  conf, and the metainfo, but not the addon conf. Fix direction: use a
-  relocatable destination (e.g. `${CMAKE_INSTALL_DATADIR}/fcitx5/addon`).
-  Owned by the packaging effort; intentionally not touched by
-  documentation changes.
-  Update 2026-09-07: DESTDIR staging is unaffected — CMake prepends
-  `DESTDIR` to absolute destinations — and a DESTDIR-staged install does
-  contain `usr/share/fcitx5/addon/oxpinyin.conf`, asserted by the passing
-  package check (`.github/scripts/package-check.sh`). The `--prefix=`-only
-  staging case is the one that escapes, and remains untested.
+- **B1 — resolved: relocatable addon configuration.** The absolute addon
+  config destination escaped `--prefix=` (reproduced under a disposable
+  DESTDIR guard on 2026-09-30). Addon config and optional Lua extension now
+  use relative GNUInstallDirs destinations. `install-check.py` asserts all
+  manifest paths and required files for DESTDIR and direct `--prefix=`;
+  package-check runs this regression. No live installation is touched.
 - **B2 — version/release entry mismatch.** Metainfo claims release
   `0.1.0`/2026-08-23 while no tag or published release exists. Sync when
   tagging (or strip the entry until then).
@@ -138,7 +128,7 @@ these are named here without detail:
 1. Empty every unchecked box above (with evidence) or consciously
    disposition it in a release-notes paragraph.
 2. Set the version in `project()` and the metainfo `<release>` entry
-   together; fix B1 first so install-staging checks exercise reality.
+   together; rerun install-staging checks on the release tree.
 3. Run the full gate matrix (both compilers, clang-format, ctest, sanitizer
    build) on the release commit.
 4. Tag, publish sources + notes, and only then update distro/packaging
