@@ -13,9 +13,6 @@ Library=oxpinyin
 1=punctuation
 
 [Addon/OptionalDependencies]
-0=quickphrase
-1=chttrans
-2=fullwidth
-3=notifications
-4=spell
-5=pinyinhelper@OXPINYIN_OPTIONAL_DEPS@
+0=chttrans
+1=fullwidth
+2=spell@OXPINYIN_OPTIONAL_DEPS@

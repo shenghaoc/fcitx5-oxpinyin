@@ -14,6 +14,7 @@
 #include <fcitx-utils/testing.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
+#include <fcitx/addoninfo.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputmethodgroup.h>
@@ -747,6 +748,85 @@ void testSpellUnavailable(Instance *instance) {
     });
 }
 #endif
+
+// Exercise the actual double-pinyin parse/candidate/commit path. ZRM's nihk
+// is ni+hao (the engine's scheme fixture); expected text comes from this same
+// engine's full-pinyin path, without committing/training between captures.
+void testDoublePinyinCommit(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        auto *engine = instance->addonManager().addon("oxpinyin", true);
+        auto *frontend = instance->addonManager().addon("testfrontend");
+        FCITX_ASSERT(engine && frontend);
+        auto uuid =
+            frontend->call<ITestFrontend::createInputContext>("testapp");
+        auto *ic = instance->inputContextManager().findByUUID(uuid);
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Control+space"), false));
+        RawConfig config;
+        config.setValueByPath("InputScheme", "Full Pinyin");
+        config.setValueByPath("SpellEnabled", "False");
+        config.setValueByPath("PredictWords", "False");
+        engine->setConfig(config);
+        for (const auto c : std::string("nihao")) {
+            FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        auto full = ic->inputPanel().candidateList();
+        FCITX_ASSERT(full && !full->empty());
+        const auto expected = full->candidate(0).text().toString();
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("Escape"), false));
+        config.setValueByPath("InputScheme", "Natural Code (ZRM)");
+        engine->setConfig(config);
+        FCITX_ASSERT(static_cast<const OxpinyinConfig *>(engine->getConfig())
+                         ->inputScheme.value() ==
+                     OxpinyinInputScheme::DoublePinyinZRM);
+        for (const auto c : std::string("nihk")) {
+            FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+                uuid, Key(static_cast<KeySym>(c)), false));
+        }
+        FCITX_ASSERT(!ic->inputPanel().preedit().toString().empty() ||
+                     !ic->inputPanel().clientPreedit().toString().empty());
+        auto doubled = ic->inputPanel().candidateList();
+        FCITX_ASSERT(doubled && !doubled->empty());
+        FCITX_ASSERT(doubled->candidate(0).text().toString() == expected);
+        frontend->call<ITestFrontend::pushCommitExpectation>(expected);
+        FCITX_ASSERT(frontend->call<ITestFrontend::sendKeyEvent>(
+            uuid, Key("space"), false));
+        FCITX_ASSERT(!ic->inputPanel().candidateList());
+        FCITX_ASSERT(ic->inputPanel().clientPreedit().toString().empty());
+        config.setValueByPath("InputScheme", "Full Pinyin");
+        config.setValueByPath("SpellEnabled", "True");
+        engine->setConfig(config);
+        instance->deactivate();
+        frontend->call<ITestFrontend::destroyInputContext>(uuid);
+    });
+}
+
+void testManifestDependencies(Instance *instance) {
+    instance->eventDispatcher().schedule([instance]() {
+        const auto *info = instance->addonManager().addonInfo("oxpinyin");
+        FCITX_ASSERT(info);
+        const auto &optional = info->optionalDependencies();
+        for (const auto *name :
+             {"quickphrase", "notifications", "pinyinhelper"}) {
+            FCITX_ASSERT(std::find(optional.begin(), optional.end(), name) ==
+                         optional.end());
+        }
+        for (const auto *name : {"chttrans", "fullwidth", "spell"}) {
+            FCITX_ASSERT(std::find(optional.begin(), optional.end(), name) !=
+                         optional.end());
+        }
+#ifdef OXPINYIN_ENABLE_CLOUDPINYIN
+        FCITX_ASSERT(std::find(optional.begin(), optional.end(),
+                               "cloudpinyin") != optional.end());
+#endif
+#ifdef OXPINYIN_ENABLE_LUA
+        FCITX_ASSERT(std::find(optional.begin(), optional.end(), "imeapi") !=
+                     optional.end());
+#endif
+    });
+}
 
 // Phase 3: scheme switch drives the parse mode — zhuyin parses a bopomofo
 // key sequence (standard layout: a=ㄇ, 8=ㄚ), full pinyin still works
@@ -2132,6 +2212,8 @@ int main() {
 #else
     testSpellUnavailable(&instance);
 #endif
+    testManifestDependencies(&instance);
+    testDoublePinyinCommit(&instance);
     testSchemeSwitchZhuyin(&instance);
     testPartialChoiceContinues(&instance);
     testBackspaceUnpins(&instance);
