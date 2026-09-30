@@ -3,7 +3,7 @@
 ## Purpose
 
 A fcitx5 input-method addon for Chinese pinyin, powered by the oxpinyin engine
-(Rust, exposed via its C ABI `libpinyin_capi` / `pinyin.h`). This repository
+(Rust, exposed via its drop-in C ABI `libpinyin.so.15` / `pinyin.h`). This repository
 contains only the C++20 shell: fcitx5 addon registration, key-event handling,
 candidate presentation, preedit, and configuration. Decoding, ranking, and
 user-model persistence belong to the engine and stay in the engine repo.
@@ -13,13 +13,17 @@ user-model persistence belong to the engine and stay in the engine repo.
 - Verified here, headless: engine call sequencing, fcitx5 wiring, preedit
   composition, configuration application — all through the TestFrontend
   harness in `test/`.
-- Engine correctness belongs upstream in oxpinyin's oracle differentials.
-  Representative pinned comparisons accompanied frontend acceptance; full
-  parity and the same-binary substitution gate remain open in RELEASE.md.
-- Manual desktop evidence: Fedora 44 KDE Wayland / Qt / basic Chrome passed
-  2026-09-30, including a clean session restart (see TESTING.md). No automated
-  desktop harness exists; X11/GTK/GNOME remain unvalidated.
-- Distribution packaging polish remains a separate workstream.
+- Engine correctness belongs upstream in oxpinyin's oracle differentials. This
+  repository owns using the libpinyin-compatible ABI correctly, not
+  bug-for-bug parity: the same-addon-binary substitution gate and its bounded
+  Tkrzw/model20 comparison are integration evidence, and parity is not a
+  frontend release criterion (see RELEASE.md).
+- Manual desktop evidence: the declared 0.1.0 scope is Fedora 44 KDE Plasma
+  Wayland / Qt / basic Chrome, accepted 2026-09-30 including a clean session
+  restart (see TESTING.md). No automated desktop harness exists; X11, GTK,
+  GNOME and Debian/Kubuntu desktops are unvalidated, not blockers.
+- Packaging scope: CPack RPM/DEB/TXZ are validated; a Fedora-native `.spec` is
+  reference material; Debian-policy `debian/` packaging is a later project.
 
 ## Non-goals
 

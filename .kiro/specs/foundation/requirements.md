@@ -1,5 +1,12 @@
 # Foundation spec — requirements
 
+> **Historical foundation snapshot — archived 2026-10-01.** Retained as the
+> original phased design record, not current implementation status or binding
+> policy. In particular its engine linkage/pins, data layout and absolute
+> live-session prohibition are superseded. Current rules: [AGENTS.md](../../../AGENTS.md);
+> build/testing guidance: [DEVELOPMENT.md](../../../DEVELOPMENT.md) and
+> [TESTING.md](../../../TESTING.md); release status: [RELEASE.md](../../../RELEASE.md).
+
 ## 1. Overview
 
 fcitx5-oxpinyin is a fcitx5 addon (C++20 shell) providing Chinese pinyin

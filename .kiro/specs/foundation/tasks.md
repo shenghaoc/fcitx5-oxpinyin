@@ -1,5 +1,12 @@
 # Foundation spec — tasks
 
+> **Historical foundation snapshot — archived 2026-10-01.** Retained as the
+> original phased design record, not current implementation status or binding
+> policy. In particular its engine linkage/pins, data layout and absolute
+> live-session prohibition are superseded. Current rules: [AGENTS.md](../../../AGENTS.md);
+> build/testing guidance: [DEVELOPMENT.md](../../../DEVELOPMENT.md) and
+> [TESTING.md](../../../TESTING.md); release status: [RELEASE.md](../../../RELEASE.md).
+
 ## Phase 0 — explain-back (DONE 2026-08-22/23)
 
 - [x] Read cskk cskk.{h,cpp}; chewing eim.{h,cpp} + testchewing.cpp + test

@@ -4,7 +4,7 @@
 
 A fcitx5 input-method addon (C++20 shell) whose engine is
 [oxpinyin](https://github.com/shenghaoc/oxpinyin) via its C ABI
-(`libpinyin_capi`, header `pinyin.h`). The Rust stays in oxpinyin; this repo is
+(`libpinyin.so.15`, header `pinyin.h`). The Rust stays in oxpinyin; this repo is
 the thin shell only — key events, candidate list, preedit, configuration,
 fcitx5 addon plumbing. Structural template: fcitx5-cskk (C++ shell over a Rust
 engine's C API). Do not move engine logic into C++; do not reach for engine
@@ -69,22 +69,24 @@ outside the exported `pinyin.h` surface.
 
 ## Data resolution
 
-`pinyin_init(systemdir, userdir)` fails closed: it needs the exported system
-tables (`pinyin_index`, `phrase_index`, `bigram` — the file extension is set
-by the storage backend compiled into that engine build, `.tkt` for the
-default tkrzw build) and a parsable `interpolation2.text` in `systemdir`,
-else returns NULL. `cargo cinstall`
-ships none of that data. The shell resolves at runtime: env
-`OXPINYIN_SYSTEM_DATA_DIR` / `OXPINYIN_USER_DATA_DIR` first (this seam keeps
-the harness and CI off any real session state), then the compiled-in
-libpinyin pkgdatadir (`<pkgdatadir>/data`), then fcitx `StandardPaths`
-(`PkgData` + `oxpinyin`).
+`pinyin_init(systemdir, userdir)` fails closed without complete compatible
+system tables/configuration. The pinned oxpinyin Tkrzw gate uses its supported
+datagen export in the libpinyin-compatible `.bin`/`.db` + `table.conf` layout;
+do not infer a model format from the library basename or assume backend
+extensions from historical specs. Installing the library alone ships no
+usable model. See PACKAGING.md for the replacement-library data contract.
+
+The shell resolves at runtime: env `OXPINYIN_SYSTEM_DATA_DIR` /
+`OXPINYIN_USER_DATA_DIR` first (the test seam avoids live state), then the
+compiled-in libpinyin pkgdatadir (`<pkgdatadir>/data`), then fcitx
+`StandardPaths` (`PkgData` + `oxpinyin`).
 
 ## Phases and STOP gates
 
 Work is phased; every phase ends with a STOP: report gate results, ctest names
-+ status, sanitizer status, head SHA, and wait for go/no-go. Current phase
-status lives in `.kiro/specs/foundation/`.
++ status, sanitizer status, head SHA, and wait for go/no-go. Current release
+status lives in RELEASE.md; `.kiro/specs/foundation/` is archived historical
+material and does not override these working rules.
 
 ## Build, test, gates
 

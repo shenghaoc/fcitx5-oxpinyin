@@ -77,24 +77,27 @@ and waits for go/no-go ([AGENTS.md](AGENTS.md)).
 
 ## Working against oxpinyin from source
 
-The default build needs nothing beyond distro packages. To develop against
-the oxpinyin Rust engine instead, shadow libpinyin in pkg-config: oxpinyin's
-capi installs a `libpinyin.pc` under the same pkg-config name (pointing at
-its own `libpinyin_capi`), so putting its pkgconfig directory first on
-`PKG_CONFIG_PATH` makes the addon — which links `libpinyin`
-unconditionally — configure and build against oxpinyin:
+The default build needs distro packages. For isolated oxpinyin development,
+use the supported engine packaging installer; plain `cargo cinstall` lacks
+complete pkg-config metadata and upstream ELF symbol versioning. The
+repository's pinned bootstrap also provisions checksum-verified model data:
 
 ```sh
-git clone https://github.com/shenghaoc/oxpinyin ../oxpinyin
-cd ../oxpinyin
-cargo cinstall -p oxpinyin-capi --prefix=$HOME/.local/oxpinyin --libdir=lib
-cd ../fcitx5-oxpinyin
-export PKG_CONFIG_PATH=$HOME/.local/oxpinyin/lib/pkgconfig:$PKG_CONFIG_PATH
-cmake -B build -DCMAKE_BUILD_TYPE=Release \
-      -DOXPINYIN_SYSTEM_DATA_DIR=/path/to/exported/engine/data \
-      -DOXPINYIN_USER_DATA_DIR=$(mktemp -d)
-cmake --build build && ctest --test-dir build --output-on-failure
+bash tools/engine-substitution/bootstrap.sh "$PWD/build-substitution"
+export PKG_CONFIG_PATH="$PWD/build-substitution/engine/lib/pkgconfig:$PKG_CONFIG_PATH"
+cmake -B build-oxpinyin -DCMAKE_BUILD_TYPE=Release \
+  -DOXPINYIN_SYSTEM_DATA_DIR="$PWD/build-substitution/engine/lib/libpinyin/data" \
+  -DOXPINYIN_USER_DATA_DIR="$(mktemp -d)"
+cmake --build build-oxpinyin
+ctest --test-dir build-oxpinyin --output-on-failure
 ```
+
+For parity, compile once against the **oracle** prefix instead and invoke the
+same-binary runner in TESTING.md; separate development builds are not a parity
+method. Keep the same pkg-config/data environment on subsequent configure
+runs so cached linkage cannot be paired with a newly discovered distro data
+path. The engine checkout's local rust-toolchain selects its required version;
+do not change the user's global Rust default.
 
 Two rules matter here:
 

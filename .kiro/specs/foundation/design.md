@@ -1,5 +1,12 @@
 # Foundation spec — design
 
+> **Historical foundation snapshot — archived 2026-10-01.** Retained as the
+> original phased design record, not current implementation status or binding
+> policy. In particular its engine linkage/pins, data layout and absolute
+> live-session prohibition are superseded. Current rules: [AGENTS.md](../../../AGENTS.md);
+> build/testing guidance: [DEVELOPMENT.md](../../../DEVELOPMENT.md) and
+> [TESTING.md](../../../TESTING.md); release status: [RELEASE.md](../../../RELEASE.md).
+
 Captures the settled design for the shell. Structural templates: fcitx5-cskk
 (shell-over-Rust-C-API), fcitx5-chewing (eim shape, harness, CI), quwei
 tutorial (progression), fcitx-libpinyin (pinyin_* call sequence only).
