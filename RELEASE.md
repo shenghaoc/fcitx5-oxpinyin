@@ -30,8 +30,8 @@ when the first tag is cut.
    delegating to chinese-addons' shared punctuation module.
 2. Spell/Cloud Pinyin/lua candidate rows commit directly and deliberately do
    not feed the engine's user model.
-3. Double pinyin lacks a dedicated end-to-end composition regression test
-   (wiring and scheme-switching are covered).
+3. Double pinyin has a dedicated ZRM TestFrontend composition/commit
+   regression; exhaustive scheme/model validation is not claimed.
 4. Conversion correctness for simplified/traditional and full-width belongs
    to the chinese-addons modules; this addon pins only their status-area
    wiring.
@@ -39,9 +39,6 @@ when the first tag is cut.
    the addon does not load (documented debugging path in the README).
 6. Cloud Pinyin's network path cannot be asserted end-to-end by automation;
    tests cover the deterministic surface plus a synchronous stub.
-7. The addon manifest declares optional dependencies (`quickphrase`,
-   `notifications`, `pinyinhelper`) that no shell code references directly;
-   their intent should be revisited before release.
 
 ## Release checklist
 
@@ -50,6 +47,7 @@ Only check items with concrete, reproducible evidence.
 ### Functionality
 
 - [ ] Frontend feature set declared complete by the maintainer
+- [x] Manifest optional dependencies audited (unused quickphrase/notifications/pinyinhelper edges removed; used conversion/Spell/Cloud/Lua entries retained, 2026-10-01)
 - [x] libpinyin.so.15 substitution run validated against the configured baseline full suite (5/5 under each pinned engine, GCC and Clang, 2026-09-30; unchanged addon hashes and loader mappings retained by the gate)
 - [ ] libpinyin/oxpinyin behavioural parity investigated and differences dispositioned
 - [ ] Supported oxpinyin database/model backends validated where applicable
@@ -58,6 +56,7 @@ Only check items with concrete, reproducible evidence.
 
 - [x] TestFrontend suite passes (baseline + optional variants; verified 2026-09-07 at 02750dd: baseline 5/5, cloud 7/7, lua 6/6)
 - [x] Regression suite passes (same runs)
+- [x] Dedicated double-pinyin composition/commit regression (ZRM through TestFrontend; expected candidate read from the same engine full-pinyin path, 2026-10-01)
 - [x] Sanitizer suite passes on the current tree (verified 2026-09-07 at 02750dd: 5/5 under ASan+UBSan, clang/RelWithDebInfo via `.github/scripts/build-test.sh`; also a CI job, `check-sanitizer`, since fd32b32; rerun at release time)
 - [x] Static analysis passes (clang-tidy over `src/oxpinyin.cpp` + `src/englishness.cpp` — zero findings, 2026-09-07 at 02750dd; a CI job, `static-analysis`, since fd32b32)
 - [x] Fuzz smoke tests pass (`fuzz-englishness-smoke` — libFuzzer replays the checked-in seed corpus plus 2000 deterministic runs — green 2026-09-07 at 02750dd; PR gate `fuzz-smoke` in CI, bounded campaign on the nightly schedule)

@@ -54,8 +54,8 @@ placeholder row's position, the toggle hotkey, disable behaviour). Anything
 requiring an actual server response goes through the synchronous stub.
 
 Coverage gaps that exist today (also recorded in [RELEASE.md](RELEASE.md)):
-double pinyin has no dedicated end-to-end composition test; simplified/
-traditional and full-width conversion *correctness* belongs to the
+double pinyin now has a dedicated ZRM composition/commit regression (not
+every scheme/model combination); simplified/traditional and full-width conversion *correctness* belongs to the
 chinese-addons modules and is only pinned here as far as their status-area
 wiring; training effects of the engine's user model are asserted indirectly
 only.

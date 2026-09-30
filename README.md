@@ -70,8 +70,8 @@ Known behavioural limitations worth knowing before relying on the addon:
 - Candidate rows contributed by Spell, Cloud Pinyin, or Lua bypass the
   engine's user model on purpose: selecting one commits directly and does
   not train the engine.
-- Double-pinyin composition has wiring and scheme-switch coverage but no
-  dedicated end-to-end composition test yet.
+- Double-pinyin composition has a dedicated ZRM TestFrontend commit
+  regression; this does not validate every scheme/model combination.
 - There are no translation catalogs yet (`po/LINGUAS` is empty).
 
 ## Engine substitution

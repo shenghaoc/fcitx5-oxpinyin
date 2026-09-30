@@ -44,13 +44,13 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/oxpinyin.conf"
 
 # Optional-dependency manifest entries are read as a SEQUENTIAL 0..N list
 # (fcitx's vector unmarshal stops at the first missing index), so each
-# feature-built entry takes the next free index after 5=pinyinhelper:
+# feature-built entry takes the next free index after 2=spell:
 # cloudpinyin and imeapi are advertised only when their code is actually
 # built (ENABLE_CLOUDPINYIN / ENABLE_LUA). Both OFF leaves the manifest
 # byte-for-byte the header-free baseline — the leading newlines keep the
 # appended entries on their own lines.
 set(OXPINYIN_OPTIONAL_DEPS "")
-set(_oxpinyin_optdep_next 6)
+set(_oxpinyin_optdep_next 3)
 if (ENABLE_CLOUDPINYIN)
     string(APPEND OXPINYIN_OPTIONAL_DEPS
            "\n${_oxpinyin_optdep_next}=cloudpinyin")
