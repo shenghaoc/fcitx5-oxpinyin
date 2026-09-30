@@ -792,6 +792,7 @@ bool OxpinyinState::handleCandidateKey(KeyEvent &keyEvent) {
             } else {
                 pageable->prev();
             }
+            ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
             return true;
         }
     }
@@ -1023,6 +1024,7 @@ bool OxpinyinState::handlePredictingKey(KeyEvent &keyEvent) {
                 } else {
                     pageable->prev();
                 }
+                ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
                 return true;
             }
         }
