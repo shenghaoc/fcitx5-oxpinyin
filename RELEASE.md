@@ -16,7 +16,7 @@ no published artifact exists yet.
 | Automated testing       | Headless ctest runners pass across the baseline and optional-feature configurations; verified 2026-09-07 at 02750dd: baseline 5/5, cloud 7/7, lua 6/6 in a CI-equivalent Arch container. Sanitizer suite clean under ASan+UBSan on the same date (clang, RelWithDebInfo) and run in CI as `check-sanitizer`. Fuzz smoke harnesses exist (`test/fuzz`: libFuzzer over the shell's input-handling seam; deterministic smoke on PRs, bounded campaign nightly) |
 | Engine parity           | **Open.** The 2026-09-30 KDE investigation compared representative inputs against pinned libpinyin 2.11.92 and oxpinyin (Tkrzw/model20), finding identical parsing/candidate ordering for tested cases and reproducing learned-state differences under identical persistent state. This is not full parity. The reproducible same-binary substitution gate is implemented in `tools/engine-substitution/`; its bounded differential is not a global parity claim. See [TESTING.md](TESTING.md) for reference revisions and scope |
 | Desktop integration     | **Partial / in progress.** A real Fedora 44 KDE Plasma Wayland manual acceptance pass completed 2026-09-30: Qt/KDE application behaviour, basic Chrome input and clean Plasma/Fcitx restart validated using verified addon/engine binaries. No automated desktop-integration harness exists; X11, GTK and GNOME remain unvalidated. See [TESTING.md](TESTING.md) |
-| Packaging               | **Scaffold only.** Install rules work (`cmake --install` into the live filesystem prefix) and CPack metadata exists, but generated DEB/RPM output is unvalidated and there are no distro packages; DESTDIR-staged installs are validated by `.github/scripts/package-check.sh`, which asserts the addon conf lands in the staging tree (B1 below) |
+| Packaging               | **Validated CPack artifacts; distro policy work remains.** Native Fedora 44 RPM and Debian unstable DEB contents, dependency resolution and installed-addon TestFrontend composition/commit validated 2026-10-01; TXZ contents and AppStream/config metadata checked. Both install staging forms pass. No artifacts published; full `.spec`/`debian/` integration remains separate. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Translation catalogs are absent (`po/LINGUAS` empty); gettext scaffolding only                                                                                                                                                    |
 
 The AppStream metainfo currently advertises `0.1.0` (2026-08-23); there is
@@ -80,10 +80,10 @@ the remaining matrix still requires evidence.
 ### Packaging
 
 - [x] Install-tree validated in isolated staging (DESTDIR and direct `--prefix=`, with all manifest paths checked; B1 resolved 2026-09-30)
-- [ ] Runtime dependencies validated on a minimal installation
-- [ ] Package metadata validated (`metainfo`, addons confs) — package-check asserts the files land, not their content; full validation needs metainfo content checks (e.g. `appstreamcli validate`) plus conf metadata linting; the headless harness parses the built addon/input-method confs on every run, which exercises function, not packaged metadata
+- [x] Runtime dependencies validated on isolated native Fedora RPM and Debian DEB runtime installations (2026-10-01; TestFrontend instrumentation supplied separately)
+- [x] Package metadata validated (AppStream schema plus addon/input-method linkage, dependency declarations and installed payloads; 2026-10-01; release/tag synchronization remains B2)
 - [x] Model data installation documented (README "Engine model data")
-- [ ] DEB/RPM packaging validated (CPack output is raw scaffolding today)
+- [x] CPack DEB/RPM packaging validated (native contents, dependency resolution and installed-addon headless smoke, 2026-10-01; full distro policy integration is not claimed)
 - [ ] Distro packaging requirements documented (debian/, .spec, dependencies incl. engine *data* packages)
 
 ### Documentation
