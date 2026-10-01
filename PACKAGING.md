@@ -5,8 +5,27 @@ Run `.github/scripts/install-check.py BUILD` and
 `.github/scripts/artifact-check.py BUILD` after a `/usr`-prefix build.
 The latter requires rpm-build/rpm2cpio, cpio, dpkg-deb and appstreamcli; it
 extracts RPM/DEB/TXZ, checks all required files, validates addon/inputmethod
-relationships and hard/optional dependencies, and runs AppStream validation.
+relationships and hard/optional dependencies, runs AppStream validation and
+`.github/scripts/i18n-check.py payload` on every extracted payload.
 Evidence is saved in the build directory, never committed.
+
+## Translations
+
+Catalogs are exactly the languages in `po/LINGUAS` (`zh_CN`, `zh_TW`); the
+build fails if `po/*.po` and `LINGUAS` disagree. Each is compiled with
+`msgfmt --check` and installed as
+`<localedir>/<lang>/LC_MESSAGES/fcitx5-oxpinyin.mo` under the relocatable
+GNUInstallDirs locale directory (`share/locale`). Fcitx's own
+`fcitx5_install_translation()` is deliberately not used: it installs to an
+absolute path that escapes `cmake --install --prefix=`. The addon manifest
+`Comment[...]` and AppStream `<name>`/`<summary>` translations are generated
+from the same catalogs. `i18n-check.py payload` verifies, for the DESTDIR,
+direct-prefix, RPM, DEB and TXZ trees, that the `.mo` files sit in that
+hierarchy (the configured `CMAKE_INSTALL_LOCALEDIR`), load, cover every template message and translate each message exactly as its source `.po` says.
+The addon registers the compiled-in `FCITX_INSTALL_LOCALEDIR` at runtime, as
+other Fcitx addons do, so a catalog is found at the configure-time prefix;
+a payload moved with `--prefix=` after configuration is installed
+relocatably but not re-pointed.
 
 ## Runtime and distro requirements
 

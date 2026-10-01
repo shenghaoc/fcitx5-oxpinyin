@@ -22,6 +22,9 @@ See [RELEASE.md](RELEASE.md) for the declared scope and remaining work.
   libpinyin 2.11.92 and Rust oxpinyin with Tkrzw/checksum-verified model20;
   nine fresh-state parsing/candidate captures match. This is bounded
   evidence, not a full libpinyin/oxpinyin parity claim.
+- Initial `zh_CN` and `zh_TW` translations (fcitx5 terminology) for config
+  labels, status actions, addon comment and AppStream metadata; other
+  locales fall back to English. The product name is not translated.
 - Relocatable DESTDIR and `--prefix=` staging, CPack RPM/DEB/TXZ payloads,
   AppStream/config metadata, and native Fedora/Debian runtime dependencies
   validated in disposable environments. Model data remains a separately

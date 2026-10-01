@@ -72,7 +72,8 @@ Known behavioural limitations worth knowing before relying on the addon:
   not train the engine.
 - Double-pinyin composition has a dedicated ZRM TestFrontend commit
   regression; this does not validate every scheme/model combination.
-- There are no translation catalogs yet (`po/LINGUAS` is empty).
+- Initial translations ship for `zh_CN` and `zh_TW` only; every other locale
+  falls back to English. The product name "Oxpinyin" is not translated.
 
 ## Engine substitution
 
