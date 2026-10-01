@@ -7,7 +7,7 @@ src/    oxpinyin.{h,cpp}; oxpinyin-addon.conf.in.in; oxpinyin.conf.in
 test/   testdir.h.in, testoxpinyin.cpp, addon/ + inputmethod/ (copy targets)
 po/     gettext: LINGUAS-driven .mo build/install, update-pot.sh (zh_CN, zh_TW)
 packaging/fedora/  Fedora-native .spec, SRPM builder, RPM validator (reference, not a submission)
-tools/  engine-substitution gate
+tools/  engine-substitution gate; acceptance/packaged-kde.sh (manual-run helper)
 .kiro/  current steering + archived specs/foundation (historical record)
 .github/workflows/ci.yml
 ```
