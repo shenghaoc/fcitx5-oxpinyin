@@ -46,6 +46,13 @@ distro libpinyin (plus optional-feature variants); those jobs must pass.
 [DEVELOPMENT.md](DEVELOPMENT.md) is the authoritative list of options and
 gates.
 
+## Translations
+
+Catalogs live in `po/` (`zh_CN`, `zh_TW`). Run `po/update-pot.sh` after changing
+user-visible strings and follow the terminology and "Oxpinyin stays
+untranslated" rules in [DEVELOPMENT.md](DEVELOPMENT.md); CI fails on stale
+templates and untranslated/fuzzy entries.
+
 ## Commit conventions
 
 Commits follow the conventional style used throughout the history

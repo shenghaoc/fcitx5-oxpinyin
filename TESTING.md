@@ -16,7 +16,11 @@ explicitly authorized manual acceptance follows the safeguards in
    sources and a libFuzzer smoke of the input seam run in CI
    (`static-analysis`, `fuzz-smoke`; a bounded campaign runs on the
    nightly schedule); status tracked in [RELEASE.md](RELEASE.md).
-4. **Real desktop integration testing** — explicitly *not* covered by this
+4. **Translation and package-payload checks** —
+   `.github/scripts/i18n-check.py` (source catalogs and installed payloads),
+   `install-check.py`, `artifact-check.py` and the Fedora-native
+   `packaging/fedora/validate-rpm.py`; see [PACKAGING.md](PACKAGING.md).
+5. **Real desktop integration testing** — explicitly *not* covered by this
    repository's automation. A manual Fedora 44 KDE Wayland pass completed on
    2026-09-30; X11, GTK and GNOME remain unvalidated (see
    [RELEASE.md](RELEASE.md)). Scope and methods are described below.
