@@ -25,6 +25,8 @@ See [RELEASE.md](RELEASE.md) for the declared scope and remaining work.
 - Initial `zh_CN` and `zh_TW` translations (fcitx5 terminology) for config
   labels, status actions, addon comment and AppStream metadata; other
   locales fall back to English. The product name is not translated.
+- A Fedora-native RPM spec (`packaging/fedora/`) builds cleanly in `mock` for
+  Fedora 44. It is upstream reference material, not a Fedora submission.
 - Relocatable DESTDIR and `--prefix=` staging, CPack RPM/DEB/TXZ payloads,
   AppStream/config metadata, and native Fedora/Debian runtime dependencies
   validated in disposable environments. Model data remains a separately

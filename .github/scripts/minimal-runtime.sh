@@ -8,8 +8,13 @@ BUILD=${1:?Usage: minimal-runtime.sh build-directory}
 BUILD=$(realpath "$BUILD")
 ROOT=${2:-$(mktemp -d /tmp/oxpinyin-runtime.XXXXXX)}
 [[ $ROOT == /tmp/oxpinyin-runtime.* && -d $ROOT ]] || exit 2
-RPM=$(find "$BUILD" -maxdepth 1 -name 'fcitx5-oxpinyin-*.rpm' -print -quit)
-test -n "$RPM"
+# OXPINYIN_RPM selects a specific package (e.g. the Fedora-native RPM built by
+# packaging/fedora); by default the CPack RPM in the build directory is used.
+RPM=${OXPINYIN_RPM:-$(find "$BUILD" -maxdepth 1 -name 'fcitx5-oxpinyin-*.rpm' -print -quit)}
+[[ -n $RPM && -f $RPM ]] || {
+    echo "error: no RPM found (set OXPINYIN_RPM or build the package)" >&2
+    exit 1
+}
 dnf --use-host-config --installroot="$ROOT" --releasever=44 --setopt=install_weak_deps=False \
     install -y "$RPM" bash coreutils
 rpm --root "$ROOT" -qa | sort > "$BUILD/minimal-runtime-packages.txt"
