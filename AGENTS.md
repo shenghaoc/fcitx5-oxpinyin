@@ -170,7 +170,7 @@ src/            oxpinyin.{h,cpp} — engine + per-context state; conf templates
 test/           headless TestFrontend harness (testoxpinyin)
 po/             gettext (LINGUAS, update-pot.sh, zh_CN/zh_TW catalogs)
 packaging/fedora/ Fedora-native .spec + SRPM/RPM validation (reference only)
-tools/          engine-substitution gate
+tools/          engine-substitution gate; acceptance/packaged-kde.sh (manual-run helper)
 .kiro/          steering docs + specs (phase status)
 .github/        CI
 ```

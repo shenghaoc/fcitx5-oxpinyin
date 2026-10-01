@@ -199,3 +199,120 @@ retained and compared without normalization. A difference fails the gate
 and must be classified; it is never hidden by changing adapter ranking.
 This bounded differential does not claim global engine parity. CI runs GCC
 and Clang and retains evidence even on failure.
+
+## Package-installed acceptance (Fedora-native RPM)
+
+**Status: executed and passed on 2026-10-04 (see Result).** The earlier 2026-09-30 pass used a
+development prefix. This run repeats the important KDE checks with the
+Fedora-native RPM from `packaging/fedora/` in a normal installation shape: no
+`LD_LIBRARY_PATH`, no development-prefix addon search path, no build-tree model
+override. It is maintainer-authorized under the live-session safeguards in
+[AGENTS.md](AGENTS.md); the human performs every GUI step and the shell side is
+automated by `tools/acceptance/packaged-kde.sh` (it never runs sudo, never
+restarts Fcitx5 and keeps evidence outside the repository in
+`~/oxpinyin-packaged-acceptance/`).
+
+Artifact under test (recorded by `record-rpm`):
+
+| Item | Value |
+| --- | --- |
+| NEVRA | `fcitx5-oxpinyin-0.1.0-1.fc44.x86_64` |
+| RPM sha256 | `858c15649384a8545eb7a5c25cf33dbd4786dbb63a9042a2ac6c208a72d4cdc6` |
+| addon sha256 (`/usr/lib64/fcitx5/oxpinyin.so`) | `528ded6c5ba2e81b6c5c80cf775317307822e22d40a4b0b307d6f5f532217f0e` |
+| source commit | `a3615f4cf8e378fea9a0f852801e3e6ef0edee83` (head of `packaging/fedora-spec` when built; later review-fix rewrites changed the commit id but not the shipped addon, hash above) |
+| build | clean `mock -r fedora-44-x86_64`, `%check` 5/5, rpmlint clean |
+| expected engine | Fedora `libpinyin-2.11.91-2.fc44` (`/usr/lib64/libpinyin.so.15.0.0`) |
+
+The engine is Fedora's ordinary libpinyin, because that is what this package
+builds against; oxpinyin substitution is a separate packaging concern covered
+by the same-binary gate above, not by this run.
+
+Non-live preflight already performed: the addon extracted from this RPM,
+with the distro libpinyin and a **copy** of the current learned user state,
+composed `nihao` and committed through the headless probe.
+
+A development setup currently shadows the package: the running daemon maps
+`build-acceptance/.../oxpinyin.so` and the Rust engine, selected by
+`~/.local/share/fcitx5/{addon,inputmethod}/oxpinyin.conf`. Those two
+descriptors must be moved aside or the user-level descriptor wins over
+`/usr/share/fcitx5/addon/oxpinyin.conf`.
+
+### Maintainer runbook
+
+Recovery first (record it): if the keyboard becomes unusable, press
+Ctrl+Alt+F3, log in, run `pkill fcitx5`. `keyboard-us` and chinese-addons
+`pinyin` remain in the profile as known-good input methods.
+
+```sh
+tools/acceptance/packaged-kde.sh preflight         # read-only audit (done)
+tools/acceptance/packaged-kde.sh backup            # done; repeat if unsure
+tools/acceptance/packaged-kde.sh shadow-aside      # move dev descriptors aside
+tools/acceptance/packaged-kde.sh install-cmds      # prints the sudo commands
+sudo dnf install ~/oxpinyin-packaged-acceptance/rpm/fcitx5-oxpinyin-0.1.0-1.fc44.x86_64.rpm
+rpm -V fcitx5-oxpinyin                             # must print nothing
+```
+
+Gate A (optional smoke): restart only Fcitx5 and type `nihao` in KWrite.
+Gate B (the real run): log out and back in so the daemon is a fresh child of the
+Plasma session, then:
+
+```sh
+tools/acceptance/packaged-kde.sh log-on            # optional oxpinyin=5 logging
+tools/acceptance/packaged-kde.sh verify post-login # fails unless the package is what runs
+```
+
+`verify` asserts that exactly `/usr/lib64/fcitx5/oxpinyin.so` (owned by
+`fcitx5-oxpinyin`, `rpm -V` clean) and `/usr/lib64/libpinyin.so.15.0.0` (owned
+by `libpinyin`) are mapped by the daemon, that no build/home/tmp path is
+mapped, no development descriptors or `LD_LIBRARY_PATH`/`OXPINYIN_*`
+overrides exist, the daemon started after the package install and the
+installed NEVRA equals the recorded one. It stores the D-Bus identity,
+journal excerpt and `fcitx5-diagnose` in the evidence directory.
+
+GUI checklist (KWrite unless stated; record pass/fail per line):
+
+1. select packaged OXPinyin
+2. `nihao` shows composition and candidates
+3. Space commits `你好`
+4. Escape cancels composition
+5. candidate paging visibly works
+6. page-local numeric selection works
+7. `woaizhongguo` commits the text expected from the current learned state
+8. switch away and back
+9. log out and in
+10. repeat a simple composition and commit
+
+Also: a Konsole text field or Find, and basic Chrome input. GNOME, GTK, X11 and
+other browsers are out of scope.
+
+Rollback: `tools/acceptance/packaged-kde.sh rollback-cmds` restores the moved
+descriptors and prints `sudo dnf remove fcitx5-oxpinyin`; the full config
+backup restore steps are in the backup's `RESTORE.txt`.
+
+### Result
+
+Executed by the maintainer on 2026-10-04 (Fedora 44, KDE Plasma Wayland) with
+the artifact above installed from the local RPM; `rpm -V fcitx5-oxpinyin` was
+clean. After a fresh login `verify post-login` passed: Fcitx5 (PID 2038,
+started after the install) mapped exactly `/usr/lib64/fcitx5/oxpinyin.so`
+(sha256 `528ded6c…17f0e`, equal to the recorded payload digest, owned by
+`fcitx5-oxpinyin-0.1.0-1.fc44`) and `/usr/lib64/libpinyin.so.15.0.0` (owned by
+`libpinyin-2.11.91-2.fc44`, `rpm -V` clean) plus the system model data under
+`/usr/lib64/libpinyin/data/`; no development descriptor or build-acceptance
+path shadowed the package.
+
+GUI results reported by the maintainer, all PASS: in KWrite, activating
+OXPinyin, `nihao` → `你好`, Escape cancellation, Page Down/Page Up, page-2
+numeric selection, Backspace/editing, switching away and back, and
+`woaizhongguo` commit; Konsole Find; basic Chrome input. No errors or
+anomalies. Checklist items 9 and 10 also PASS: after a clean logout/login with
+the packaged RPM loaded (evidenced by the post-login verification), the
+maintainer repeated a composition and committed it in KWrite. Evidence (runtime map, journal, `fcitx5-diagnose`) is kept locally in
+`~/oxpinyin-packaged-acceptance/evidence/post-login/` and is not committed.
+
+Fedora 44 KDE Wayland acceptance has also been completed using the
+Fedora-native packaged installation. This is stronger than the earlier
+development-prefix acceptance, but it is manual evidence for the declared
+scope only: it does not claim official Fedora repository support, other
+desktops or browsers, or oxpinyin-engine behaviour (the engine here was
+Fedora's libpinyin).
