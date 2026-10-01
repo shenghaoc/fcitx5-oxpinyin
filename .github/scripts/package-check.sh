@@ -37,15 +37,11 @@ test -f \
     "$STAGE/usr/share/metainfo/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml" ||
     fail "appstream metainfo missing"
 
-# Translations ship only when po/LINGUAS actually lists languages (it is
-# empty until translations arrive); once it does, a compiled catalog is part
-# of the package contract.
-if grep -Ev '^[[:space:]]*(#|$)' "$ROOT/po/LINGUAS" | grep . > /dev/null; then
-    if ! find "$STAGE/usr/share/locale" -name 'fcitx5-oxpinyin*.mo' |
-        grep . > /dev/null; then
-        fail "po/LINGUAS has languages but no compiled catalog installed"
-    fi
-fi
+# Translations are part of the package contract: every language in po/LINGUAS
+# must have a compiled catalog in the locale hierarchy that loads, translates
+# and covers the whole template, plus translated manifest/metainfo entries.
+python3 "$ROOT/.github/scripts/i18n-check.py" source
+python3 "$ROOT/.github/scripts/i18n-check.py" payload "$STAGE"
 
 echo "--- staged files:"
 (cd "$STAGE" && find usr -type f | sort)

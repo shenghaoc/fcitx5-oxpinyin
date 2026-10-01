@@ -1,209 +1,210 @@
-# fcitx5-oxpinyin translation template.
+# Chinese (Traditional) translation for fcitx5-oxpinyin.
 # Copyright (C) 2026 Shenghao Chen
 # This file is distributed under the GPL-3.0-or-later license.
+# Terminology follows fcitx5 and fcitx5-chinese-addons.
 #
-#, fuzzy
 msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-oxpinyin 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/shenghaoc/fcitx5-oxpinyin/issues\n"
 "POT-Creation-Date: 2026-09-30 22:44+0800\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
+"PO-Revision-Date: 2026-10-01 12:00+0800\n"
+"Last-Translator: Shenghao Chen <shenghaoc@outlook.com>\n"
+"Language-Team: Chinese (Traditional)\n"
+"Language: zh_TW\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
 #: org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in:7
 msgid "Oxpinyin for Fcitx 5"
-msgstr ""
+msgstr "Fcitx 5 的 Oxpinyin"
 
 #: org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in:8
 msgid "Pinyin input method for fcitx5"
-msgstr ""
+msgstr "Fcitx 5 拼音輸入法"
 
 #: src/oxpinyin-addon.conf.in.in:3
 msgid "Pinyin input method powered by the oxpinyin engine"
-msgstr ""
+msgstr "由 oxpinyin 引擎驅動的拼音輸入法"
 
 #: src/oxpinyin.cpp:313
 msgid "Show prediction words"
-msgstr ""
+msgstr "顯示預測字詞"
 
 #: src/oxpinyin.cpp:341 src/oxpinyinconfig.h:87
 msgid "Show English candidates"
-msgstr ""
+msgstr "顯示英文候選詞"
 
 #: src/oxpinyin.cpp:614
 msgid "Prediction Enabled"
-msgstr ""
+msgstr "已啟用預測功能"
 
 #: src/oxpinyin.cpp:615
 msgid "Prediction Disabled"
-msgstr ""
+msgstr "已停用預測功能"
 
 #: src/oxpinyin.cpp:621
 msgid "Spell Enabled"
-msgstr ""
+msgstr "已啟用拼寫功能"
 
 #: src/oxpinyin.cpp:622
 msgid "Spell Disabled"
-msgstr ""
+msgstr "已停用拼寫功能"
 
 #: src/oxpinyinconfig.h:40
 msgid "Full Pinyin"
-msgstr ""
+msgstr "全拼"
 
 #: src/oxpinyinconfig.h:40
 msgid "Natural Code (ZRM)"
-msgstr ""
+msgstr "自然碼（ZRM）"
 
 #: src/oxpinyinconfig.h:41
 msgid "Microsoft Double Pinyin"
-msgstr ""
+msgstr "微軟雙拼"
 
 #: src/oxpinyinconfig.h:41
 msgid "Ziguang Double Pinyin"
-msgstr ""
+msgstr "紫光雙拼"
 
 #: src/oxpinyinconfig.h:42
 msgid "Intelligent ABC Double Pinyin"
-msgstr ""
+msgstr "智能 ABC 雙拼"
 
 #: src/oxpinyinconfig.h:42
 msgid "Pinyin Jiajia Double Pinyin"
-msgstr ""
+msgstr "拼音加加雙拼"
 
 #: src/oxpinyinconfig.h:43
 msgid "Hsu Zhuyin"
-msgstr ""
+msgstr "許氏注音"
 
 #: src/oxpinyinconfig.h:43
 msgid "Standard Zhuyin"
-msgstr ""
+msgstr "標準注音"
 
 #: src/oxpinyinconfig.h:43
 msgid "Xiaohe Double Pinyin"
-msgstr ""
+msgstr "小鶴雙拼"
 
 #: src/oxpinyinconfig.h:44
 msgid "Eten Zhuyin"
-msgstr ""
+msgstr "倚天注音"
 
 #: src/oxpinyinconfig.h:44
 msgid "Gin-Yieh Zhuyin"
-msgstr ""
+msgstr "精業注音"
 
 #: src/oxpinyinconfig.h:44
 msgid "IBM Zhuyin"
-msgstr ""
+msgstr "IBM 注音"
 
 #: src/oxpinyinconfig.h:45
 msgid "Eten26 Zhuyin"
-msgstr ""
+msgstr "倚天 26 鍵注音"
 
 #: src/oxpinyinconfig.h:45
 msgid "Standard Zhuyin (Dvorak)"
-msgstr ""
+msgstr "標準注音（Dvorak）"
 
 #: src/oxpinyinconfig.h:46
 msgid "Dachen CP26 Zhuyin"
-msgstr ""
+msgstr "大千 26 鍵注音"
 
 #: src/oxpinyinconfig.h:46
 msgid "Hsu Zhuyin (Dvorak)"
-msgstr ""
+msgstr "許氏注音（Dvorak）"
 
 #: src/oxpinyinconfig.h:57
 msgid "Input scheme"
-msgstr ""
+msgstr "輸入方案"
 
 #: src/oxpinyinconfig.h:60
 msgid "Candidate page size"
-msgstr ""
+msgstr "每頁候選詞數"
 
 #: src/oxpinyinconfig.h:61
 msgid "Incomplete pinyin"
-msgstr ""
+msgstr "不完整拼音"
 
 #: src/oxpinyinconfig.h:62
 msgid "Fuzzy c and ch"
-msgstr ""
+msgstr "模糊音 c 和 ch"
 
 #: src/oxpinyinconfig.h:63
 msgid "Fuzzy s and sh"
-msgstr ""
+msgstr "模糊音 s 和 sh"
 
 #: src/oxpinyinconfig.h:64
 msgid "Fuzzy z and zh"
-msgstr ""
+msgstr "模糊音 z 和 zh"
 
 #: src/oxpinyinconfig.h:65
 msgid "Fuzzy f and h"
-msgstr ""
+msgstr "模糊音 f 和 h"
 
 #: src/oxpinyinconfig.h:66
 msgid "Fuzzy g and k"
-msgstr ""
+msgstr "模糊音 g 和 k"
 
 #: src/oxpinyinconfig.h:67
 msgid "Fuzzy l and n"
-msgstr ""
+msgstr "模糊音 l 和 n"
 
 #: src/oxpinyinconfig.h:68
 msgid "Fuzzy l and r"
-msgstr ""
+msgstr "模糊音 l 和 r"
 
 #: src/oxpinyinconfig.h:69
 msgid "Fuzzy an and ang"
-msgstr ""
+msgstr "模糊音 an 和 ang"
 
 #: src/oxpinyinconfig.h:70
 msgid "Fuzzy en and eng"
-msgstr ""
+msgstr "模糊音 en 和 eng"
 
 #: src/oxpinyinconfig.h:71
 msgid "Fuzzy in and ing"
-msgstr ""
+msgstr "模糊音 in 和 ing"
 
 #: src/oxpinyinconfig.h:72
 msgid "Correct gn to ng"
-msgstr ""
+msgstr "將 gn 糾正為 ng"
 
 #: src/oxpinyinconfig.h:74
 msgid "Correct mg to ng"
-msgstr ""
+msgstr "將 mg 糾正為 ng"
 
 #: src/oxpinyinconfig.h:76
 msgid "Correct iou to iu"
-msgstr ""
+msgstr "將 iou 糾正為 iu"
 
 #: src/oxpinyinconfig.h:78
 msgid "Correct uei to ui"
-msgstr ""
+msgstr "將 uei 糾正為 ui"
 
 #: src/oxpinyinconfig.h:80
 msgid "Correct uen to un"
-msgstr ""
+msgstr "將 uen 糾正為 un"
 
 #: src/oxpinyinconfig.h:82
 msgid "Correct ue to ve"
-msgstr ""
+msgstr "將 ue 糾正為 ve"
 
 #: src/oxpinyinconfig.h:84
 msgid "Predict next word"
-msgstr ""
+msgstr "預測下一個詞"
 
 #: src/oxpinyinconfig.h:103
 msgid "Enable Cloud Pinyin"
-msgstr ""
+msgstr "啟用雲端拼音"
 
 #: src/oxpinyinconfig.h:105
 msgid "Cloud Pinyin Candidate Order"
-msgstr ""
+msgstr "雲拼音候選字詞順序"
 
 #: src/oxpinyinconfig.h:119
 msgid "Use Chinese punctuation"
-msgstr ""
+msgstr "使用中文標點"

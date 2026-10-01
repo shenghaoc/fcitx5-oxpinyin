@@ -28,6 +28,11 @@ def dependency_names(text):
 
 
 build = Path(sys.argv[1]).resolve()
+_cache = (build / 'CMakeCache.txt').read_text().splitlines()
+def cache_var(name):
+    return next(x.split('=', 1)[1] for x in _cache if x.startswith(name + ':'))
+# GNUInstallDirs derives an empty LOCALEDIR cache entry from DATAROOTDIR.
+localedir = cache_var('CMAKE_INSTALL_LOCALEDIR') or f"{cache_var('CMAKE_INSTALL_DATAROOTDIR')}/locale"
 required = ['fcitx5/oxpinyin.so', 'fcitx5/addon/oxpinyin.conf',
             'fcitx5/inputmethod/oxpinyin.conf',
             'metainfo/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml']
@@ -47,6 +52,10 @@ def check_tree(root):
     assert any(x.startswith('core:') for x in deps) and 'punctuation' in deps
     assert addon['Addon']['library'] == 'oxpinyin'
     assert conf('/inputmethod/oxpinyin.conf')['InputMethod']['addon'] == 'oxpinyin'
+    # Installed translation catalogs in the locale hierarchy, loaded and
+    # compared to the template, plus translated manifest/metainfo entries.
+    subprocess.run([sys.executable, str(Path(__file__).with_name('i18n-check.py')),
+                    'payload', str(root), localedir], check=True)
     meta = next(p for p in files if '/metainfo/' in str(p))
     assert ET.parse(meta).getroot().findtext('id') == 'org.fcitx.Fcitx5.Addon.Oxpinyin'
     subprocess.run(['appstreamcli', 'validate', '--no-net', str(meta)], check=True)
@@ -93,7 +102,7 @@ for generator, suffix in [('TXZ', '.tar.xz'), ('RPM', '.rpm'), ('DEB', '.deb')]:
         records.append({'generator': generator, 'artifact': str(artifact),
                         'dependencies': dependencies, 'files': check_tree(root)})
 (build / 'artifact-evidence.json').write_text(json.dumps(records, indent=2) + '\n')
-print('RPM/DEB/TXZ contents, dependencies and metadata: PASS')
+print('RPM/DEB/TXZ contents, dependencies, metadata and translations: PASS')
 
 # Prepare separately attributed TestFrontend instrumentation for a fresh
 # runtime container. This is never shipped in the package payload.

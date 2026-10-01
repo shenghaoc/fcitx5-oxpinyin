@@ -17,7 +17,7 @@ no published artifact exists yet.
 | Engine compatibility    | **Frontend scope complete.** The addon uses only the libpinyin-compatible C ABI. The reproducible same-binary `libpinyin.so.15` substitution gate (`tools/engine-substitution/`) runs one unchanged addon binary under pinned libpinyin 2.11.92 and Rust oxpinyin (Tkrzw/model20) and compares bounded captures as integration evidence. Behavioural parity with libpinyin is **not** claimed and is not a frontend release criterion; engine defects belong in the oxpinyin repository. See [TESTING.md](TESTING.md) |
 | Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
 | Packaging               | **Validated CPack artifacts.** Native Fedora 44 RPM and Debian unstable DEB contents, dependency resolution and installed-addon TestFrontend composition/commit validated 2026-10-01; TXZ contents and AppStream/config metadata checked. Both install staging forms pass. No artifacts published. A Fedora-native `.spec` is planned as upstream/reference material (not Fedora acceptance); Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
-| Internationalization    | Translation catalogs are absent (`po/LINGUAS` empty); gettext scaffolding only. Initial zh_CN/zh_TW catalogs are planned before 0.1.0 |
+| Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
 The unreleased tree keeps `project()` at `0.1.0` but has no AppStream
 release entry. Add the actual version/date together with the maintainer's
@@ -43,9 +43,9 @@ Settled by the maintainer:
   material; it is not evidence of Fedora acceptance. Debian-policy
   `debian/` packaging is a later project.
 
-Remaining substantive pre-0.1.0 work: (1) translations, (2) Fedora-native
-packaging, (3) package-installed Fedora KDE acceptance, (4) final release
-hardening. No tag, GitHub Release or package publication has been
+Remaining substantive pre-0.1.0 work: (1) Fedora-native packaging,
+(2) package-installed Fedora KDE acceptance, (3) final release hardening.
+Translations are done. No tag, GitHub Release or package publication has been
 authorized.
 
 Unvalidated environments (not blockers, not claimed to work or fail): GNOME,
@@ -112,6 +112,8 @@ GNOME, Kubuntu/Ubuntu/Debian desktops, other browsers.
 - [x] CPack DEB/RPM packaging validated (native contents, dependency resolution and installed-addon headless smoke, 2026-10-01; full distro policy integration is not claimed)
 - [ ] Fedora-native `.spec` added and clean-built (planned; Debian-native `debian/` is a later, non-blocking project)
 
+- [x] Initial zh_CN/zh_TW translations built, installed and payload-verified (`msgfmt --check`, template freshness, `.mo` locale hierarchy and loaded strings in DESTDIR/prefix/RPM/DEB/TXZ payloads, 2026-10-01)
+
 ### Documentation
 
 - [x] README current (reviewed 2026-10-01; includes accurate status + architecture)
@@ -152,8 +154,8 @@ these are named here without detail:
 
 1. Empty every unchecked box above (with evidence) or consciously
    disposition it in a release-notes paragraph (remaining planned work:
-   translations, Fedora-native packaging, package-installed KDE
-   acceptance, final hardening).
+   Fedora-native packaging, package-installed KDE acceptance, final
+   hardening).
 2. Set the version in `project()` and the metainfo `<release>` entry
    together; rerun install-staging checks on the release tree.
 3. Run the full gate matrix (both compilers, clang-format, ctest, sanitizer

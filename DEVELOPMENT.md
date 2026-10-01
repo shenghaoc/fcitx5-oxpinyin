@@ -75,6 +75,20 @@ Before considering work finished, the gates are: configure/build clean on
 `test/`, ctest green, and CI green. Phased work then ends in a STOP report
 and waits for go/no-go ([AGENTS.md](AGENTS.md)).
 
+## Translations
+
+Gettext sources are `_()`/`N_()` strings in `src/`, the addon manifest
+`Comment=` and the AppStream metainfo. Run `po/update-pot.sh` to regenerate
+`po/fcitx5-oxpinyin.pot` and merge it into every language in `po/LINGUAS`;
+`po/update-pot.sh --check` fails when the template is stale. Add a language by
+creating `po/<lang>.po` (Fcitx locale names such as `zh_CN`, `zh_TW`), listing
+it in `po/LINGUAS` and running the update script. Follow established
+fcitx5/fcitx5-chinese-addons terminology; keep "Oxpinyin" untranslated, and
+do not mark debug output, config keys, identifiers, paths or comments for
+translation. `.github/scripts/i18n-check.py source` runs `msgfmt --check`,
+completeness (no untranslated/fuzzy/obsolete) and template freshness checks;
+`package-check.sh` additionally verifies the installed payload.
+
 ## Working against oxpinyin from source
 
 The default build needs distro packages. For isolated oxpinyin development,
