@@ -26,7 +26,9 @@ See [RELEASE.md](RELEASE.md) for the declared scope and remaining work.
   labels, status actions, addon comment and AppStream metadata; other
   locales fall back to English. The product name is not translated.
 - A Fedora-native RPM spec (`packaging/fedora/`) builds cleanly in `mock` for
-  Fedora 44. It is upstream reference material, not a Fedora submission.
+  Fedora 44. It is upstream reference material, not a Fedora submission. The Fedora-native RPM was
+  also accepted on Fedora 44 KDE Wayland (KWrite, Konsole Find, basic Chrome)
+  on 2026-10-04, using Fedora's libpinyin.
 - Relocatable DESTDIR and `--prefix=` staging, CPack RPM/DEB/TXZ payloads,
   AppStream/config metadata, and native Fedora/Debian runtime dependencies
   validated in disposable environments. Model data remains a separately

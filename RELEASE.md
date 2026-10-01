@@ -7,15 +7,25 @@ the test suite, and real runs — and dated so staleness is detectable.
 
 ## Current release status
 
+**Technically release-ready for the declared 0.1.0 scope.** No tag or artifact has been published. Final publication requires explicit maintainer authorization.
+
+Every gate below passed on 2026-10-01 on the top-of-stack tree, and the
+maintainer completed the package-installed Fedora KDE acceptance on 2026-10-04
+(Fedora-native RPM, [TESTING.md](TESTING.md)). The later changes after the
+matrix are documentation only. The shipped addon binary, configuration files,
+catalogs and metainfo of the Fedora-native RPM are byte-identical (per-file
+digests) to the accepted package; only the packaged documentation
+(`README.md`, `RELEASE-NOTES.md`) differs.
+
 Snapshot: **2026-10-01**, version `0.1.0` (from `project()`), no git tag and
 no published artifact exists yet.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend implementation | The full feature set described in the [README](README.md) — schemes (full/double pinyin/Zhuyin), candidate flow with constrained selection, preedit/aux text, prediction, English candidates, punctuation delegation, s2t/full-width toggle surfacing, optional Cloud Pinyin and lua candidates, status-bar toggles — is implemented and covered by the headless suite |
-| Automated testing       | Verified 2026-10-01: GCC and Clang Release baseline 5/5, Cloud 7/7 and Lua 6/6; Clang ASan+UBSan 5/5, fuzz-enabled suite 6/6 and clang-tidy clean. Ordinary CI remains against distro libpinyin; the separate same-binary gate uses the pinned reference and Rust engine. See [TESTING.md](TESTING.md) |
+| Automated testing       | Final gate matrix, 2026-10-01, clean export of the top-of-stack commit in Fedora 44 containers with warnings-as-errors: GCC and Clang Release baseline 5/5; Cloud 7/7 and Lua 6/6 on both compilers; Clang ASan+UBSan 5/5; fuzz-enabled suite 6/6; clang-tidy 0 findings; clang-format clean; commit lint and linter self-test 31/31. CI additionally runs the pinned same-binary substitution gate on every pull-request update and by manual dispatch (it does not run on direct pushes to `main`). See [TESTING.md](TESTING.md) |
 | Engine compatibility    | **Frontend scope complete.** The addon uses only the libpinyin-compatible C ABI. The reproducible same-binary `libpinyin.so.15` substitution gate (`tools/engine-substitution/`) runs one unchanged addon binary under pinned libpinyin 2.11.92 and Rust oxpinyin (Tkrzw/model20) and compares bounded captures as integration evidence. Behavioural parity with libpinyin is **not** claimed and is not a frontend release criterion; engine defects belong in the oxpinyin repository. See [TESTING.md](TESTING.md) |
-| Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
+| Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. Fedora 44 KDE Wayland acceptance was repeated on 2026-10-04 with the Fedora-native RPM installed. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
 | Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** No artifacts published; Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
@@ -43,10 +53,9 @@ Settled by the maintainer:
   material; it is not evidence of Fedora acceptance. Debian-policy
   `debian/` packaging is a later project.
 
-Remaining substantive pre-0.1.0 work: (1) package-installed Fedora KDE
-acceptance, (2) final release hardening. Translations and the Fedora-native
-spec are done. No tag, GitHub Release or package publication has been
-authorized.
+No substantive pre-0.1.0 work remains: translations, the Fedora-native spec,
+the package-installed Fedora KDE acceptance and final hardening are done. No tag,
+GitHub Release or package publication has been authorized.
 
 Unvalidated environments (not blockers, not claimed to work or fail): GNOME,
 GTK-specific testing, X11, Kubuntu/Ubuntu and other Debian desktops,
@@ -114,6 +123,9 @@ GNOME, Kubuntu/Ubuntu/Debian desktops, other browsers.
 
 - [x] Initial zh_CN/zh_TW translations built, installed and payload-verified (`msgfmt --check`, template freshness, `.mo` locale hierarchy and loaded strings in DESTDIR/prefix/RPM/DEB/TXZ payloads, 2026-10-01)
 
+- [x] Final package matrix on the top-of-stack tree (2026-10-01): `install-check.py` (DESTDIR, `--prefix=`, direct), `artifact-check.py` (CPack RPM/DEB/TXZ payloads, dependencies, AppStream, translations), CPack RPM disposable Fedora 44 install + headless smoke, Fedora-native `mock` SRPM/RPM clean build (`%check` 5/5, rpmlint clean, `validate-rpm.py` 9/9). The Fedora-native RPM's addon binary, configs, catalogs and metainfo are byte-identical (per-file digests) to the accepted package (only packaged docs differ)
+- [x] Package-installed Fedora KDE acceptance (2026-10-04, Fedora 44 KDE Wayland with the Fedora-native RPM: runtime identity verified, KWrite, Konsole Find and basic Chrome passed; see [TESTING.md](TESTING.md); no official Fedora support claimed)
+
 ### Documentation
 
 - [x] README current (reviewed 2026-10-01; includes accurate status + architecture)
@@ -150,14 +162,26 @@ these are named here without detail:
   browsers, an automated desktop harness, `debian/` packaging and Fedora
   repository submission are optional later work, not 0.1.0 blockers.
 
-## Making a release (sketch)
+## Making a release
+
+Nothing below is done by preparation work; each step needs the maintainer's
+explicit authorization.
 
 1. Empty every unchecked box above (with evidence) or consciously
-   disposition it in a release-notes paragraph (remaining planned work:
-   package-installed KDE acceptance, final hardening).
-2. Set the version in `project()` and the metainfo `<release>` entry
-   together; rerun install-staging checks on the release tree.
-3. Run the full gate matrix (both compilers, clang-format, ctest, sanitizer
-   build) on the release commit.
-4. Tag, publish sources + notes, and only then update distro/packaging
-   claims anywhere they appear.
+   disposition it in a release-notes paragraph.
+2. Tag-time metadata, together in one commit: add
+   `<releases><release version="0.1.0" date="YYYY-MM-DD"/></releases>` to
+   `org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in` (after `<project_group>`),
+   keep `project(... VERSION 0.1.0)`, retitle `RELEASE-NOTES.md` from "draft,
+   unreleased" and date it, and add a dated `%changelog` entry for the same
+   version in `packaging/fedora/fcitx5-oxpinyin.spec`. Rerun `install-check.py`,
+   `artifact-check.py` (AppStream validates the release entry) and
+   `i18n-check.py source`.
+3. Run the full gate matrix on that release commit: both compilers (baseline,
+   Cloud, Lua), clang-format, ASan+UBSan, clang-tidy, fuzz smoke, commit lint,
+   same-binary substitution gate, install/package checks and the
+   Fedora-native `mock` build with `validate-rpm.py`. Rerun the manual KDE
+   acceptance only if the release commit changes the packaged payload.
+4. Tag `v0.1.0` (the spec's `Source0` expects that tag archive), publish
+   sources + notes, and only then update distro/packaging claims anywhere
+   they appear.
