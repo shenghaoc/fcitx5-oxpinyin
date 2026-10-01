@@ -171,18 +171,19 @@ to point tests at explicit model-data directories with
 ## Installation and packaging status
 
 There is currently **no released artifact of any kind** (no tarball release,
-no DEB/RPM, no AUR entry). What exists today:
+no published DEB/RPM, no AUR/Fedora/COPR entry). What exists today:
 
-- a working install tree from `cmake --install`: the addon library, the
-  input-method and addon config files, and AppStream metainfo;
-- CPack scaffolding: `cpack -G "DEB;RPM"` generates raw packages straight
-  off the install rules. These are **not** distro-quality packages and have
-  not been validated.
+- a relocatable install tree from `cmake --install` (addon library,
+  input-method and addon config files, translations, AppStream metainfo),
+  validated for DESTDIR and `--prefix=` staging;
+- CPack RPM/DEB/TXZ convenience packages whose payloads, dependencies and
+  metadata are validated, and exercised in disposable native Fedora/Debian
+  installs;
+- a Fedora-native RPM spec in `packaging/fedora/`, kept as upstream reference
+  material. **It has not been submitted to Fedora**; no official Fedora package
+  exists. Debian-policy `debian/` packaging is a later project.
 
-Packaging work — proper debian/ and .spec packaging, `--prefix=`-staged
-install validation, and runtime-dependency validation — is planned as a
-separate effort; DESTDIR-staged installs are already validated in CI by
-`.github/scripts/package-check.sh`. See [RELEASE.md](RELEASE.md).
+See [PACKAGING.md](PACKAGING.md) and [RELEASE.md](RELEASE.md).
 
 Runtime requirements once installed: fcitx5 ≥ 5.1.13,
 fcitx5-chinese-addons (the punctuation module), the engine library

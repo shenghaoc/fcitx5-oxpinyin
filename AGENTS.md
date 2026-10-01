@@ -168,7 +168,9 @@ have.
 ```
 src/            oxpinyin.{h,cpp} — engine + per-context state; conf templates
 test/           headless TestFrontend harness (testoxpinyin)
-po/             gettext
+po/             gettext (LINGUAS, update-pot.sh, zh_CN/zh_TW catalogs)
+packaging/fedora/ Fedora-native .spec + SRPM/RPM validation (reference only)
+tools/          engine-substitution gate
 .kiro/          steering docs + specs (phase status)
 .github/        CI
 ```

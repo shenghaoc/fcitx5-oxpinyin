@@ -139,8 +139,9 @@ if (ENABLE_TEST)
     add_subdirectory(test)
 endif ()
 
-# CPack: generated off the install() rules with `cpack -G "DEB;RPM"`.
-# Archive-grade debian/ + .spec packaging is a later, separate effort.
+# CPack: generated off the install() rules with `cpack -G "DEB;RPM"`. These
+# are convenience/validation packages; the Fedora-native source packaging lives
+# in packaging/fedora/, and Debian-policy debian/ packaging is a later project.
 set(CPACK_PACKAGE_NAME "fcitx5-oxpinyin")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")

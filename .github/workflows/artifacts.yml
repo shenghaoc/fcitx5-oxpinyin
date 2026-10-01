@@ -31,6 +31,47 @@ jobs:
           path: |
             build/artifact-evidence.json
             build/minimal-runtime-*
+  fedora-native:
+    # Fedora-native source packaging (packaging/fedora): SRPM, BuildRequires
+    # resolved from the SRPM in a clean Fedora 44 container, binary rebuild
+    # with the spec's %check, rpmlint/payload inspection, then a disposable
+    # install and the headless addon smoke. A mock build is the local
+    # reference; mock needs privileges a hosted container job lacks.
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Prerequisites
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False git rpm-build rpmlint
+          dnf-plugins-core python3 binutils appstream cpio gettext cmake make
+          glibc-langpack-en
+          gcc-c++ extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
+          libpinyin-devel
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build SRPM, resolve BuildRequires, rebuild and inspect
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          packaging/fedora/build-srpm.sh "$PWD/build-fedora-native"
+          dnf builddep -y build-fedora-native/SRPMS/*.src.rpm
+          rpmbuild --rebuild --define "_topdir $PWD/build-fedora-native/rebuild" \
+            build-fedora-native/SRPMS/*.src.rpm
+          python3 packaging/fedora/validate-rpm.py \
+            build-fedora-native/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm \
+            build-fedora-native/SRPMS/*.src.rpm
+      - name: Disposable install and headless smoke
+        run: |
+          cmake -B build-probe -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build-probe -j2 --target package-runtime
+          OXPINYIN_RPM="$(ls "$PWD"/build-fedora-native/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm)" \
+            bash .github/scripts/minimal-runtime.sh build-probe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fedora-native-validation-evidence
+          path: |
+            build-probe/minimal-runtime-*
   debian:
     runs-on: ubuntu-latest
     steps:
