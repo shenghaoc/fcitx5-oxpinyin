@@ -5,8 +5,8 @@ Four distinct things are described here; do not conflate them:
 1. **CMake install** — `cmake --install` (DESTDIR or `--prefix=`), the base
    every package is built from. Checked by `install-check.py`.
 2. **CPack RPM/DEB/TXZ** — convenience/validation packages generated from the
-   install rules (the sections below). Supported and validated, never
-   published.
+   install rules (the sections below). Supported and validated; no DEB/TXZ is
+   published yet.
 3. **Fedora-native `.spec`** — `packaging/fedora/fcitx5-oxpinyin.spec`, see
    [Fedora-native packaging](#fedora-native-packaging). Reference material for
    upstream; it packages the addon only.
@@ -15,6 +15,9 @@ Four distinct things are described here; do not conflate them:
    Fedora availability.
 
 CPack and the spec are independent: the spec does not replace or alter CPack.
+
+A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository
+entry exists) are attached to the GitHub Release; no DEB/TXZ is published yet.
 
 CPack outputs are local validation artifacts, not published distro packages.
 Run `.github/scripts/install-check.py BUILD` and
