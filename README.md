@@ -171,8 +171,9 @@ to point tests at explicit model-data directories with
 ## Installation and packaging status
 
 The 0.1.0 source release is published as the `v0.1.0` tag and its GitHub
-Release. There are no published binary packages (no DEB/RPM downloads, no
-AUR/Fedora/COPR entry). What exists today:
+Release. A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution
+repository entry exists) are attached to the GitHub Release; no DEB/TXZ is
+published yet. What exists today:
 
 - a relocatable install tree from `cmake --install` (addon library,
   input-method and addon config files, translations, AppStream metainfo),
