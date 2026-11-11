@@ -1,0 +1,183 @@
+name: Release assets
+
+# Publication step. Pushing a `v*` tag builds the Fedora 44 RPM and SRPM from
+# GitHub's own archive of that tag (the spec's Source0), validates them, and
+# attaches them to the GitHub Release (created from RELEASE-NOTES.md when it
+# does not exist yet). `workflow_dispatch` with a `tag` input rebuilds and
+# re-attaches the assets of an existing tag using this workflow from the
+# default branch; the tag itself is never moved or created here.
+#
+# These are upstream prebuilt packages, not a distribution repository entry.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach assets for (e.g. v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-assets-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Never interpolated into a script body; always read as "$TAG".
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  fedora:
+    name: Fedora 44 RPM and SRPM
+    runs-on: ubuntu-latest
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prerequisites
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False git rpm-build rpmlint
+          dnf-plugins-core python3 binutils appstream cpio gettext cmake make
+          glibc-langpack-en curl
+          gcc-c++ extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
+          libpinyin-devel
+      - name: Validate tag name
+        run: |
+          set -euo pipefail
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "error: tag '$TAG' is not of the form vX.Y.Z" >&2; exit 1;
+          }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - name: Version in spec and project() must match the tag
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          spec="$(rpmspec -q --srpm --qf '%{version}\n' packaging/fedora/fcitx5-oxpinyin.spec | head -n1)"
+          cmake_version="$(sed -n 's/^project(fcitx5-oxpinyin VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          echo "tag=$want spec=$spec project()=$cmake_version"
+          [[ $spec == "$want" ]] || { echo "error: spec Version $spec != tag $want" >&2; exit 1; }
+          [[ $cmake_version == "$want" ]] || { echo "error: project() VERSION $cmake_version != tag $want" >&2; exit 1; }
+          echo "VERSION=$want" >> "$GITHUB_ENV"
+      - name: Download GitHub's tag archive as Source0
+        run: |
+          set -euo pipefail
+          top="$PWD/build-release"
+          mkdir -p "$top/SOURCES" "$top/SPECS" "$top/SRPMS"
+          source0="$top/SOURCES/fcitx5-oxpinyin-$VERSION.tar.gz"
+          curl -sSfL --retry 3 -o "$source0" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
+          (cd "$top/SOURCES" && sha256sum "fcitx5-oxpinyin-$VERSION.tar.gz") | tee "$top/source-archive.sha256"
+          {
+            echo "### Source0 (GitHub archive of \`$TAG\`)"
+            echo '```'
+            cat "$top/source-archive.sha256"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build SRPM, resolve BuildRequires, rebuild
+        run: |
+          set -euo pipefail
+          top="$PWD/build-release"
+          cp packaging/fedora/fcitx5-oxpinyin.spec "$top/SPECS/"
+          rpmbuild -bs --define "_topdir $top" "$top/SPECS/fcitx5-oxpinyin.spec"
+          dnf builddep -y "$top"/SRPMS/*.src.rpm
+          rpmbuild --rebuild --define "_topdir $top/rebuild" "$top"/SRPMS/*.src.rpm
+      - name: validate-rpm.py
+        run: |
+          set -euo pipefail
+          top="$PWD/build-release"
+          python3 packaging/fedora/validate-rpm.py \
+            "$top"/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm \
+            "$top"/SRPMS/*.src.rpm
+      - name: Engine dependency is stock libpinyin only
+        run: |
+          set -euo pipefail
+          rpm="$(ls "$PWD"/build-release/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm)"
+          requires="$(rpm -qpR "$rpm")"
+          echo "$requires"
+          if grep -i oxpinyin <<<"$requires"; then
+            echo "error: the package requires something named oxpinyin" >&2; exit 1
+          fi
+          grep -Fxq 'libpinyin.so.15()(64bit)' <<<"$requires" || {
+            echo "error: missing requirement libpinyin.so.15()(64bit)" >&2; exit 1;
+          }
+      - name: Disposable install and headless smoke
+        run: |
+          set -euo pipefail
+          cmake -B build-probe -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build-probe -j2 --target package-runtime
+          OXPINYIN_RPM="$(ls "$PWD"/build-release/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm)" \
+            bash .github/scripts/minimal-runtime.sh build-probe
+      - name: Collect assets and checksums
+        run: |
+          set -euo pipefail
+          top="$PWD/build-release"
+          mkdir dist
+          cp "$top"/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm "$top"/SRPMS/*.src.rpm dist/
+          (cd dist && sha256sum -- *.rpm > SHA256SUMS && cat SHA256SUMS)
+          {
+            echo '### Release assets'
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: release-validation-evidence
+          path: |
+            build-release/source-archive.sha256
+            build-probe/minimal-runtime-*
+
+  upload:
+    name: Attach assets to the GitHub Release
+    needs: fedora
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release if missing, upload assets
+      actions: read # fetch this run's artifact with gh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - name: Fetch the built assets
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --name release-assets --dir dist
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: Create the release if it does not exist
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "release $TAG already exists; only assets are replaced"
+          else
+            gh release create "$TAG" --title "fcitx5-oxpinyin ${TAG#v}" \
+              --notes-file RELEASE-NOTES.md --verify-tag
+          fi
+      - name: Upload RPM, SRPM and SHA256SUMS
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist/*.rpm dist/SHA256SUMS --clobber
+      # CPack DEB/TXZ stay out until
+      # https://github.com/shenghaoc/fcitx5-oxpinyin/issues/32 is fixed (the
+      # payloads ship no LICENSE and the DEB carries CPack's default Section).
+      # Then build them the way artifacts.yml's `debian` job does, add them to
+      # SHA256SUMS and enable:
+      # - name: Upload CPack DEB and TXZ
+      #   run: gh release upload "$TAG" dist/*.deb dist/*.tar.xz --clobber
