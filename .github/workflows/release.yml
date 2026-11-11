@@ -56,6 +56,8 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Version in spec and project() must match the tag
         run: |
           set -euo pipefail
