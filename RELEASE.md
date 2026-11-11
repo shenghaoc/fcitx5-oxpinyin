@@ -180,6 +180,13 @@ explicit authorization.
    same-binary substitution gate, install/package checks and the
    Fedora-native `mock` build with `validate-rpm.py`. Rerun the manual KDE
    acceptance only if the release commit changes the packaged payload.
-4. Tag `v0.1.0` (the spec's `Source0` expects that tag archive), publish
-   sources + notes, and only then update distro/packaging claims anywhere
-   they appear.
+4. Push the `vX.Y.Z` tag (the spec's `Source0` expects that tag archive).
+   Pushing the tag is the publication step: `.github/workflows/release.yml`
+   builds the Fedora 44 RPM and SRPM from GitHub's archive of the tag, checks
+   that the spec and `project()` versions match it, runs `validate-rpm.py`,
+   the stock-libpinyin dependency check and the disposable-install smoke,
+   creates the GitHub Release from `RELEASE-NOTES.md` if it does not exist,
+   and attaches the RPM, the SRPM and `SHA256SUMS`. The same workflow can be
+   dispatched manually with a `tag` input to rebuild the assets of an
+   existing tag. Only then update distro/packaging claims anywhere they
+   appear.
