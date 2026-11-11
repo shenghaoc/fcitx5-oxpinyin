@@ -1,7 +1,10 @@
-# 0.1.0 release notes — draft, unreleased
+# 0.1.0 release notes — 2026-11-12
 
-No tag, GitHub Release or package publication has been authorized or created.
-See [RELEASE.md](RELEASE.md) for the declared scope and remaining work.
+Packages depend on stock libpinyin (`libpinyin.so.15`, pkg-config `libpinyin`),
+not on oxpinyin. oxpinyin is an optional install-time substitute exporting
+libpinyin's SONAME.
+
+See [RELEASE.md](RELEASE.md) for the declared scope.
 
 - Thin C++20 Fcitx5 frontend for full pinyin, double pinyin and Zhuyin using
   only the exported libpinyin C ABI. Dedicated ZRM double-pinyin composition

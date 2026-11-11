@@ -5,20 +5,21 @@ to its first public release, and what has to be true before one happens.
 Status statements here are evidence-based — checked against the source tree,
 the test suite, and real runs — and dated so staleness is detectable.
 
-## Current release status
+## Current release status — 0.1.0 released on 2026-11-12
 
-**Technically release-ready for the declared 0.1.0 scope.** No tag or artifact has been published. Final publication requires explicit maintainer authorization.
+**0.1.0 is released on 2026-11-12 for the declared scope.**
 
-Every gate below passed on 2026-10-01 on the top-of-stack tree, and the
+Every gate below passed on 2026-10-01 on the then top-of-stack tree, and the
 maintainer completed the package-installed Fedora KDE acceptance on 2026-10-04
-(Fedora-native RPM, [TESTING.md](TESTING.md)). The later changes after the
-matrix are documentation only. The shipped addon binary, configuration files,
-catalogs and metainfo of the Fedora-native RPM are byte-identical (per-file
-digests) to the accepted package; only the packaged documentation
-(`README.md`, `RELEASE-NOTES.md`) differs.
+(Fedora-native RPM, [TESTING.md](TESTING.md)). Relative to that accepted tree,
+the release commit changes only documentation and adds the AppStream
+`<releases>` entry to the metainfo; the addon binary, configuration files and
+catalogs are built from unchanged sources. Maintainer disposition: the release
+entry is catalog metadata that fcitx5 does not read at runtime, so the KDE
+acceptance was not repeated for the release payload.
 
-Snapshot: **2026-10-01**, version `0.1.0` (from `project()`), no git tag and
-no published artifact exists yet.
+Release metadata: **2026-11-12**, version `0.1.0` (from `project()`).
+The gate results below are historical; the release commit's gate matrix is recorded on pull request #30.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,13 +27,11 @@ no published artifact exists yet.
 | Automated testing       | Final gate matrix, 2026-10-01, clean export of the top-of-stack commit in Fedora 44 containers with warnings-as-errors: GCC and Clang Release baseline 5/5; Cloud 7/7 and Lua 6/6 on both compilers; Clang ASan+UBSan 5/5; fuzz-enabled suite 6/6; clang-tidy 0 findings; clang-format clean; commit lint and linter self-test 31/31. CI additionally runs the pinned same-binary substitution gate on every pull-request update and by manual dispatch (it does not run on direct pushes to `main`). See [TESTING.md](TESTING.md) |
 | Engine compatibility    | **Frontend scope complete.** The addon uses only the libpinyin-compatible C ABI. The reproducible same-binary `libpinyin.so.15` substitution gate (`tools/engine-substitution/`) runs one unchanged addon binary under pinned libpinyin 2.11.92 and Rust oxpinyin (Tkrzw/model20) and compares bounded captures as integration evidence. Behavioural parity with libpinyin is **not** claimed and is not a frontend release criterion; engine defects belong in the oxpinyin repository. See [TESTING.md](TESTING.md) |
 | Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. Fedora 44 KDE Wayland acceptance was repeated on 2026-10-04 with the Fedora-native RPM installed. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
-| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** No artifacts published; Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
+| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** No binary packages published; Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
-The unreleased tree keeps `project()` at `0.1.0` but has no AppStream
-release entry. Add the actual version/date together with the maintainer's
-explicit tag/publish decision. [RELEASE-NOTES.md](RELEASE-NOTES.md) is a draft,
-not evidence of a published release.
+The release tree keeps `project()` at `0.1.0` and has a matching AppStream
+release entry and dated [RELEASE-NOTES.md](RELEASE-NOTES.md).
 
 ## 0.1.0 scope decisions
 
@@ -54,8 +53,7 @@ Settled by the maintainer:
   `debian/` packaging is a later project.
 
 No substantive pre-0.1.0 work remains: translations, the Fedora-native spec,
-the package-installed Fedora KDE acceptance and final hardening are done. No tag,
-GitHub Release or package publication has been authorized.
+the package-installed Fedora KDE acceptance and final hardening are done. The maintainer authorized the 0.1.0 tag and GitHub Release on 2026-11-12; no distribution package has been published.
 
 Unvalidated environments (not blockers, not claimed to work or fail): GNOME,
 GTK-specific testing, X11, Kubuntu/Ubuntu and other Debian desktops,

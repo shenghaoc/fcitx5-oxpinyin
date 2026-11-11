@@ -8,10 +8,10 @@ libpinyin-compatible C ABI (`pinyin.h`). It links stock
 that exports the same C ABI, substitutes for it at install time (see
 "Engine substitution" below).
 
-**Status:** active development toward version 0.1.0. The frontend feature set
+**Status:** version 0.1.0 is released on 2026-11-12. The frontend feature set
 described below is implemented and covered by a headless regression suite;
-one real Fedora/KDE/Wayland acceptance pass is complete. Broader desktop
-coverage and full distro packaging remain outstanding; CPack artifacts are validated. there is **no released version yet**.
+Fedora/KDE/Wayland package-installed acceptance is complete. Broader desktop
+coverage and distro submissions remain outstanding; CPack artifacts are validated.
 See [RELEASE.md](RELEASE.md) for the current release status and checklist.
 
 ## Architecture
@@ -170,8 +170,9 @@ to point tests at explicit model-data directories with
 
 ## Installation and packaging status
 
-There is currently **no released artifact of any kind** (no tarball release,
-no published DEB/RPM, no AUR/Fedora/COPR entry). What exists today:
+The 0.1.0 source release is published as the `v0.1.0` tag and its GitHub
+Release. There are no published binary packages (no DEB/RPM downloads, no
+AUR/Fedora/COPR entry). What exists today:
 
 - a relocatable install tree from `cmake --install` (addon library,
   input-method and addon config files, translations, AppStream metainfo),

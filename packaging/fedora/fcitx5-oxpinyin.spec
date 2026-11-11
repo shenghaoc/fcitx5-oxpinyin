@@ -89,5 +89,5 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.fcitx.Fcitx5.Addo
 %{_metainfodir}/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml
 
 %changelog
-* Thu Oct 01 2026 Shenghao Chen <shenghaoc@outlook.com> - 0.1.0-1
-- Reference spec for the unreleased 0.1.0 tree (not a Fedora submission)
+* Thu Nov 12 2026 Shenghao Chen <shenghaoc@outlook.com> - 0.1.0-1
+- 0.1.0 release (reference spec, not a Fedora submission)
