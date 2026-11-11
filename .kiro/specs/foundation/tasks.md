@@ -6,6 +6,11 @@
 > live-session prohibition are superseded. Current rules: [AGENTS.md](../../../AGENTS.md);
 > build/testing guidance: [DEVELOPMENT.md](../../../DEVELOPMENT.md) and
 > [TESTING.md](../../../TESTING.md); release status: [RELEASE.md](../../../RELEASE.md).
+>
+> **Retirement note (2026-11-12).** The commit-attribution trailer policy
+> recorded under Phase 1 below — the commit-msg hook, the commit linter and
+> its test harness, and the two CI trailer jobs — was retired and those files
+> removed. The entry is kept as written for the historical record only.
 
 ## Phase 0 — explain-back (DONE 2026-08-22/23)
 

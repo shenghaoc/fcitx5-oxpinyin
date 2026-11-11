@@ -134,24 +134,15 @@ this shell.
 ## Commit rules
 
 Every commit must have author **and** committer set to
-`Shenghao Chen <shenghaoc@outlook.com>` plus one trailer in the house form:
-
-```text
-Assisted-by: Z.ai:GLM-5.3
-```
-
-i.e. `AGENT:MODEL`, nothing after the model. A commit-msg hook enforces this
-locally; the same checks run in CI. Activate with:
+`Shenghao Chen <shenghaoc@outlook.com>`. Set up with:
 
 ```sh
 git config user.name "Shenghao Chen"
 git config user.email "shenghaoc@outlook.com"
-git config core.hooksPath .githooks
 ```
 
-AI-agent identity belongs in `Assisted-by:` only — never in
-`Co-authored-by:` and never as commit author/committer. The linter lives at
-`.github/scripts/lint-commits.sh` (self-tested by `test/lint-commits.test.sh`).
+Contributors remain responsible for understanding, reviewing, testing, and
+maintaining the changes they submit, including tool-assisted changes.
 
 ## Safety when testing an input method
 

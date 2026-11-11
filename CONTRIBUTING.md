@@ -57,14 +57,12 @@ templates and untranslated/fuzzy entries.
 
 Commits follow the conventional style used throughout the history
 (`feat:`, `fix:`, `test:`, `docs:`, `chore:` — lowercase imperative
-summary). Author and committer identity rules plus an `Assisted-by:`
-trailer are enforced by a commit-msg hook locally and re-checked in CI;
-see [DEVELOPMENT.md](DEVELOPMENT.md) ("Commit rules") for the exact form
-and one-time setup commands.
+summary). Author and committer identity rules are in
+[DEVELOPMENT.md](DEVELOPMENT.md) ("Commit rules"), with the one-time setup
+commands.
 
-AI-assisted contributions are welcome under the same rules: agent identity
-belongs in the `Assisted-by:` trailer only — never `Co-authored-by:`, never
-as author/committer.
+Contributors remain responsible for understanding, reviewing, testing, and
+maintaining the changes they submit, including tool-assisted changes.
 
 ## Reporting issues
 
