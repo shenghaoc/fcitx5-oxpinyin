@@ -133,13 +133,8 @@ this shell.
 
 ## Commit rules
 
-Every commit must have author **and** committer set to
-`Shenghao Chen <shenghaoc@outlook.com>`. Set up with:
-
-```sh
-git config user.name "Shenghao Chen"
-git config user.email "shenghaoc@outlook.com"
-```
+Every commit must follow the author **and** committer identity rule in
+[AGENTS.md](AGENTS.md#commit-identity).
 
 Contributors remain responsible for understanding, reviewing, testing, and
 maintaining the changes they submit, including tool-assisted changes.

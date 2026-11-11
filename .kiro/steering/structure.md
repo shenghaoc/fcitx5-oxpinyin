@@ -18,7 +18,8 @@ tools/  engine-substitution gate; acceptance/packaged-kde.sh (manual-run helper)
   names + status, sanitizer status, head SHA; wait for go/no-go.
 - Explain-back before code on tagged work (engine loop, preedit,
   constraints, CI, packaging).
-- Commit identity: author AND committer `Shenghao Chen <shenghaoc@outlook.com>`.
+- Commit identity: author AND committer per the AGENTS.md "Commit identity"
+  rule.
 
 ## Gates
 

@@ -133,13 +133,9 @@ libpinyin in pkg-config.
 
 ## Commit identity
 
-Every commit: author AND committer `Shenghao Chen <shenghaoc@outlook.com>`.
-Set up with:
-
-```sh
-git config user.name "Shenghao Chen"
-git config user.email "shenghaoc@outlook.com"
-```
+Every commit: author AND committer are the Git identity that is already
+configured. If no identity is configured, stop and do not commit. Never set
+or change a Git identity unless the human explicitly instructs it.
 
 Contributors remain responsible for understanding, reviewing, testing, and
 maintaining the changes they submit, including tool-assisted changes.
