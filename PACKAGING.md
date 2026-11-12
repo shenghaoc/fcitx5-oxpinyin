@@ -118,8 +118,9 @@ The DEB declaration now uses `libpinyin15`/`libpinyin-data` and the standalone
 Reference: [Debian libpinyin15](https://packages.debian.org/en/libpinyin15)
 and [Chinese addon packages](https://packages.debian.org/search?keywords=fcitx5-chinese-addons&searchon=sourcenames).
 A Fedora-built DEB is only an inspected payload. Native Debian validation
-builds with `-DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON` and installs that DEB in a
-fresh Debian container. The automated artifact workflow exercises native
+runs on Debian testing: it builds with `-DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON`
+and installs that DEB in a fresh Debian testing container. The automated
+artifact workflow exercises native
 Fedora RPM and Debian DEB dependency resolution, installed-addon discovery,
 composition/commit, absent punctuation and missing model data. Fedora also
 checks a missing engine SONAME. Explicitly copied TestFrontend/testim modules

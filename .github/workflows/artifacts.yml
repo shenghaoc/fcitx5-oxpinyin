@@ -80,7 +80,7 @@ jobs:
           persist-credentials: false
       - name: Native Debian build and package inspection
         run: |
-          docker run --rm -v "$PWD:/work" -w /work debian:unstable sh -ec '
+          docker run --rm -v "$PWD:/work" -w /work debian:testing sh -ec '
             apt-get update
             apt-get install -y --no-install-recommends g++ cmake make git \
               extra-cmake-modules libfcitx5core-dev libfcitx5utils-dev \
@@ -95,7 +95,7 @@ jobs:
           '
       - name: Fresh Debian runtime container
         run: |
-          docker run --rm -v "$PWD:/work" -w /work debian:unstable \
+          docker run --rm -v "$PWD:/work" -w /work debian:testing \
             bash .github/scripts/debian-runtime.sh build-debian
       - uses: actions/upload-artifact@v4
         if: always()
