@@ -14,6 +14,7 @@
   <url type="vcs-browser">https://github.com/shenghaoc/fcitx5-oxpinyin</url>
   <project_group>Fcitx</project_group>
   <releases>
+    <release version="0.1.1" date="2026-11-12"/>
     <release version="0.1.0" date="2026-11-12"/>
   </releases>
   <content_rating type="oars-1.1"/>

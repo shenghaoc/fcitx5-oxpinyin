@@ -1,3 +1,10 @@
+fcitx5-oxpinyin (0.1.1) unstable; urgency=medium
+
+  * Release 0.1.1. See RELEASE-NOTES.md in the upstream source:
+    https://github.com/shenghaoc/fcitx5-oxpinyin/blob/v0.1.1/RELEASE-NOTES.md
+
+ -- Shenghao Chen <shenghaoc@outlook.com>  Thu, 12 Nov 2026 11:45:04 +0800
+
 fcitx5-oxpinyin (0.1.0) unstable; urgency=medium
 
   * Release 0.1.0. See RELEASE-NOTES.md in the upstream source:

@@ -5,21 +5,27 @@ to its first public release, and what has to be true before one happens.
 Status statements here are evidence-based — checked against the source tree,
 the test suite, and real runs — and dated so staleness is detectable.
 
-## Current release status — 0.1.0 released on 2026-11-12
+## Current release status — 0.1.1 released on 2026-11-12
 
-**0.1.0 is released on 2026-11-12 for the declared scope.**
+**0.1.1 is released on 2026-11-12 for the declared scope.** It is a packaging
+and release-automation release ([RELEASE-NOTES.md](RELEASE-NOTES.md)): nothing
+under `src/` or `po/` differs from 0.1.0. In the installed payload, only the
+`Version=` line of the addon configuration and the AppStream `<releases>`
+entry change. The KDE acceptance below was run on the 0.1.0 payload and has
+not been repeated for 0.1.1.
 
-Every gate below passed on 2026-10-01 on the then top-of-stack tree, and the
+0.1.0 was released on 2026-11-12. Every gate below passed on 2026-10-01 on the
+then top-of-stack tree, and the
 maintainer completed the package-installed Fedora KDE acceptance on 2026-10-04
 (Fedora-native RPM, [TESTING.md](TESTING.md)). Relative to that accepted tree,
-the release commit changes only documentation and adds the AppStream
+the 0.1.0 release commit changes only documentation and adds the AppStream
 `<releases>` entry to the metainfo; the addon binary, configuration files and
 catalogs are built from unchanged sources. Maintainer disposition: the release
 entry is catalog metadata that fcitx5 does not read at runtime, so the KDE
 acceptance was not repeated for the release payload.
 
-Release metadata: **2026-11-12**, version `0.1.0` (from `project()`).
-The gate results below are historical; the release commit's gate matrix is recorded on pull request #30.
+Release metadata: **2026-11-12**, version `0.1.1` (from `project()`).
+The gate results below are historical; the 0.1.0 release commit's gate matrix is recorded on pull request #30.
 
 | Area                    | Status                                                                                                                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -30,7 +36,7 @@ The gate results below are historical; the release commit's gate matrix is recor
 | Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; starting with 0.1.1 the release workflow also attaches a Debian testing DEB and TXZ (v0.1.0 carries only the RPM and SRPM; nothing is claimed for Debian stable, Ubuntu or other releases). Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
-The release tree keeps `project()` at `0.1.0` and has a matching AppStream
+The release tree keeps `project()` at `0.1.1` and has a matching AppStream
 release entry and dated [RELEASE-NOTES.md](RELEASE-NOTES.md).
 
 ## 0.1.0 scope decisions

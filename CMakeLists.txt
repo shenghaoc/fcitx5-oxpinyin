@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(fcitx5-oxpinyin VERSION 0.1.0 LANGUAGES CXX)
+project(fcitx5-oxpinyin VERSION 0.1.1 LANGUAGES CXX)
 
 set(REQUIRED_FCITX_VERSION 5.1.13)
 

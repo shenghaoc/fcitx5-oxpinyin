@@ -15,7 +15,7 @@
 %global __provides_exclude_from ^%{_libdir}/fcitx5/.*\\.so$
 
 Name:           fcitx5-oxpinyin
-Version:        0.1.0
+Version:        0.1.1
 # Explicit release/changelog keep this in-tree reference spec reproducible
 # outside dist-git; a Fedora submission would use %%autorelease/%%autochangelog.
 Release:        1%{?dist}
@@ -89,5 +89,8 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.fcitx.Fcitx5.Addo
 %{_metainfodir}/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml
 
 %changelog
+* Thu Nov 12 2026 Shenghao Chen <shenghaoc@outlook.com> - 0.1.1-1
+- 0.1.1 release (reference spec, not a Fedora submission)
+
 * Thu Nov 12 2026 Shenghao Chen <shenghaoc@outlook.com> - 0.1.0-1
 - 0.1.0 release (reference spec, not a Fedora submission)
