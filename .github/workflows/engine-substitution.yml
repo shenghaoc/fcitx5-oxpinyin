@@ -19,7 +19,7 @@ jobs:
           fcitx5-devel fcitx5-chinese-addons-devel libpinyin-devel
           tkrzw-devel xz-devel lz4-devel libzstd-devel autoconf automake libtool gnome-common ibus-devel
           sqlite-devel gettext-devel curl tar xz python3 cargo-c patch which wget diffutils
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Rust toolchain
@@ -39,7 +39,7 @@ jobs:
           python3 tools/engine-substitution/run.py --build build \
             --oracle build-substitution/oracle --engine build-substitution/engine \
             --output build-substitution/evidence
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: substitution-${{ matrix.compiler }}

@@ -14,7 +14,7 @@ jobs:
           dnf install -y --setopt=install_weak_deps=False git gcc-c++ cmake make
           extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
           libpinyin-devel gettext python3 rpm-build dpkg cpio appstream
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build and inspect artifacts
@@ -24,7 +24,7 @@ jobs:
           python3 .github/scripts/install-check.py build
           python3 .github/scripts/artifact-check.py build
           bash .github/scripts/minimal-runtime.sh build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: package-validation-evidence
@@ -47,7 +47,7 @@ jobs:
           glibc-langpack-en
           gcc-c++ extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
           libpinyin-devel
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build SRPM, resolve BuildRequires, rebuild and inspect
@@ -66,7 +66,7 @@ jobs:
           cmake --build build-probe -j2 --target package-runtime
           OXPINYIN_RPM="$(ls "$PWD"/build-fedora-native/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm)" \
             bash .github/scripts/minimal-runtime.sh build-probe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: fedora-native-validation-evidence
@@ -75,7 +75,7 @@ jobs:
   debian:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The recipe (dependencies, flags, ctest, artifact-check, lintian) is
@@ -88,7 +88,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work debian:testing \
             bash .github/scripts/debian-runtime.sh build-debian
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: debian-package-validation-evidence

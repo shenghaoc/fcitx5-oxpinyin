@@ -175,7 +175,7 @@ jobs:
             echo "- Debian assets: \`$debian\`"
             echo "- dry run: \`$DRY_RUN\`, replace: \`$REPLACE\`"
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-notes
           path: RELEASE-NOTES.md
@@ -280,12 +280,12 @@ jobs:
           # Guards the transfer between jobs; the published SHA256SUMS is
           # written once, over all assets, by the assemble job.
           (cd dist && sha256sum -- *.rpm > fedora.sha256 && cat fedora.sha256)
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets-fedora
           path: dist/
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: release-validation-evidence
@@ -341,12 +341,12 @@ jobs:
           cp build-debian/fcitx5-oxpinyin-*.deb "dist/fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb"
           # The CPack TXZ is built and checked above but is not a release asset.
           (cd dist && sha256sum -- *.deb > debian.sha256 && cat debian.sha256)
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets-debian
           path: dist/
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: release-debian-evidence
@@ -477,14 +477,14 @@ jobs:
           { echo '### Publication'; echo "$decision"; } >> "$GITHUB_STEP_SUMMARY"
       # Restorable: the upload job prints the commands if a replace fails
       # (RELEASE.md, "Rebuilding the assets of an existing tag").
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.previous.outputs.exists == 'true'
         with:
           name: previous-release-assets
           path: previous/
           if-no-files-found: error
           retention-days: 90
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-bundle
           path: bundle/

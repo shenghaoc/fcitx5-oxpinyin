@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: fcitx/github-actions@clang-format
+      - uses: fcitx/github-actions@cecd5e61153b12d2c4d19425764a8ad26f0ebae3 # clang-format branch
 
   check:
     name: Build and test (gcc, strict warnings as errors)
