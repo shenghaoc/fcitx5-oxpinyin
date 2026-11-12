@@ -6,9 +6,11 @@ name: Release assets
 #   - Fedora 44 RPM and SRPM, built from GitHub's own archive of the tag (the
 #     spec's Source0);
 #   - Debian testing DEB and TXZ (CPack), built by the same recipe
-#     artifacts.yml runs on every pull request. Skipped for a tag whose tree
-#     has no packaging/debian/changelog (v0.1.0), which predates the DEB
-#     license and changelog fixes;
+#     artifacts.yml runs on every pull request. Skipped for v0.1.0 alone,
+#     the historical Fedora-only release. Any other tree must contain
+#     packaging/debian/changelog and .github/scripts/debian-build.sh, or the
+#     run fails before building: each tree is built and validated by its own
+#     scripts;
 #   - one SHA256SUMS over all of them.
 #
 # A new release is created as a draft, the assets are uploaded, downloaded
@@ -75,6 +77,8 @@ jobs:
           INPUT_REF: ${{ inputs.ref }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_REPLACE: ${{ inputs.replace }}
+          GH_TOKEN: ${{ github.token }} # read-only; resolves `ref` to a commit
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
@@ -107,7 +111,10 @@ jobs:
             [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tag '$tag' is not of the form vX.Y.Z"
             checkout_ref="refs/tags/$tag"
           else
-            checkout_ref="$INPUT_REF"
+            # A branch, tag or commit, possibly abbreviated: actions/checkout
+            # only takes full SHAs, so resolve it to one here.
+            checkout_ref="$(gh api "repos/$GH_REPO/commits/$INPUT_REF" --jq .sha)" ||
+              fail "ref '$INPUT_REF' does not name a commit in $GH_REPO"
           fi
           {
             echo "mode=$mode"
@@ -137,14 +144,22 @@ jobs:
           # and the spec and changelog are compared against it.
           if [[ $MODE == tag ]]; then version="${TAG#v}"; else version="$project"; fi
           [[ $project == "$version" ]] || fail "project() VERSION $project != $version"
-          if [[ -f packaging/debian/changelog ]]; then
+          if [[ $MODE == tag && $TAG == v0.1.0 ]]; then
+            # The one historical, Fedora-only release.
+            debian=false
+            echo "::notice title=Debian assets skipped::v0.1.0 is the historical Fedora-only release: its tree predates the DEB license and changelog fixes. No DEB or TXZ is built or uploaded for it; only the Fedora assets are."
+          else
+            # Everything else must carry the Debian release packaging. A tree
+            # is validated by its own scripts, never by this workflow
+            # revision's, so one without them cannot be released from here.
+            for needed in packaging/debian/changelog .github/scripts/debian-build.sh; do
+              [[ -f $needed ]] ||
+                fail "this tree predates the Debian release packaging (no $needed); it can't be released by this workflow"
+            done
             changelog="$(sed -n '1s/^fcitx5-oxpinyin (\([^)]*\)).*/\1/p' packaging/debian/changelog)"
             [[ $changelog == "$version" ]] ||
               fail "newest packaging/debian/changelog entry '$changelog' != $version"
             debian=true
-          else
-            debian=false
-            echo "::notice title=Debian assets skipped::This tree has no packaging/debian/changelog, so it predates the DEB license and changelog fixes. No DEB or TXZ is built or uploaded for it; only the Fedora assets are."
           fi
           {
             echo "sha=$sha"
@@ -280,8 +295,8 @@ jobs:
   debian:
     name: Debian testing DEB and TXZ
     needs: plan
-    # Old-tag rule: never build a DEB from a tree without the license and
-    # changelog fixes. The plan job announces the skip.
+    # Skipped for v0.1.0 only; the plan job announces that, and fails for any
+    # other tree that lacks the Debian release packaging.
     if: needs.plan.outputs.debian == 'true'
     runs-on: ubuntu-latest
     env:
@@ -342,8 +357,8 @@ jobs:
   assemble:
     name: Assemble and check the asset set
     needs: [plan, fedora, debian]
-    # The debian job may be skipped only by the old-tag rule. A failed Debian
-    # build stops here, so a new tag never gets a Fedora-only release.
+    # The debian job may be skipped only for v0.1.0. A failed Debian build
+    # stops here, so no other tag ever gets a Fedora-only release.
     if: >-
       ${{ !cancelled() && needs.plan.result == 'success' && needs.fedora.result == 'success'
       && (needs.debian.result == 'success'
@@ -458,10 +473,8 @@ jobs:
           [[ $DRY_RUN == true ]] && decision="DRY RUN, nothing is written. $decision"
           echo "::notice title=Publication::$decision"
           { echo '### Publication'; echo "$decision"; } >> "$GITHUB_STEP_SUMMARY"
-      # Restore with:
-      #   gh run download <run> -n previous-release-assets -D previous
-      #   rm previous/previous-assets.json
-      #   gh release upload <tag> previous/* --clobber
+      # Restorable: the upload job prints the commands if a replace fails
+      # (RELEASE.md, "Rebuilding the assets of an existing tag").
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.previous.outputs.exists == 'true'
         with:
@@ -582,7 +595,21 @@ jobs:
           STATE: ${{ steps.state.outputs.state }}
         run: |
           if [[ $STATE == published ]]; then
-            echo "::error::Replacing the assets of $TAG failed part-way; the release may hold a mix. Restore the previous assets with: gh run download $GITHUB_RUN_ID -n previous-release-assets -D previous && rm previous/previous-assets.json && gh release upload $TAG previous/* --clobber"
+            echo "::error::Replacing the assets of $TAG failed part-way; the release may hold a mix. There is no automatic rollback: the restore commands are printed in this step's log."
+            # Put the backup back, then delete, by asset ID, whatever the
+            # failed run added that the backup does not name.
+            cat <<EOF
+          Restore the previous assets of $TAG with:
+
+            gh run download $GITHUB_RUN_ID -R $GH_REPO -n previous-release-assets -D previous
+            mv previous/previous-assets.json .
+            gh release upload $TAG -R $GH_REPO previous/* --clobber
+            gh api repos/$GH_REPO/releases/tags/$TAG --jq '.assets[] | "\(.id) \(.name)"' |
+              while read -r id name; do
+                jq -e --arg name "\$name" 'any(.[]; .name == \$name)' previous-assets.json > /dev/null ||
+                  gh api -X DELETE "repos/$GH_REPO/releases/assets/\$id"
+              done
+          EOF
           elif [[ -n $STATE ]]; then
             echo "::error::Nothing was published. If a draft release for $TAG exists it was left as a draft; a new run empties and reuses it."
           else
