@@ -27,7 +27,7 @@ The gate results below are historical; the release commit's gate matrix is recor
 | Automated testing       | Final gate matrix, 2026-10-01, clean export of the top-of-stack commit in Fedora 44 containers with warnings-as-errors: GCC and Clang Release baseline 5/5; Cloud 7/7 and Lua 6/6 on both compilers; Clang ASan+UBSan 5/5; fuzz-enabled suite 6/6; clang-tidy 0 findings; clang-format clean; commit lint and linter self-test 31/31. CI additionally runs the pinned same-binary substitution gate on every pull-request update and by manual dispatch (it does not run on direct pushes to `main`). See [TESTING.md](TESTING.md) |
 | Engine compatibility    | **Frontend scope complete.** The addon uses only the libpinyin-compatible C ABI. The reproducible same-binary `libpinyin.so.15` substitution gate (`tools/engine-substitution/`) runs one unchanged addon binary under pinned libpinyin 2.11.92 and Rust oxpinyin (Tkrzw/model20) and compares bounded captures as integration evidence. Behavioural parity with libpinyin is **not** claimed and is not a frontend release criterion; engine defects belong in the oxpinyin repository. See [TESTING.md](TESTING.md) |
 | Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. Fedora 44 KDE Wayland acceptance was repeated on 2026-10-04 with the Fedora-native RPM installed. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
-| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; no DEB/TXZ is published yet. Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
+| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; starting with 0.1.1 the release workflow also attaches a Debian testing DEB and TXZ (v0.1.0 carries only the RPM and SRPM; nothing is claimed for Debian stable, Ubuntu or other releases). Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
 The release tree keeps `project()` at `0.1.0` and has a matching AppStream
@@ -53,7 +53,7 @@ Settled by the maintainer:
   `debian/` packaging is a later project.
 
 No substantive pre-0.1.0 work remains: translations, the Fedora-native spec,
-the package-installed Fedora KDE acceptance and final hardening are done. The maintainer authorized the 0.1.0 tag and GitHub Release on 2026-11-12; a prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; no DEB/TXZ is published yet.
+the package-installed Fedora KDE acceptance and final hardening are done. The maintainer authorized the 0.1.0 tag and GitHub Release on 2026-11-12; a prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release. v0.1.0 carries only those; starting with 0.1.1 the release workflow also attaches a Debian testing DEB and TXZ.
 
 Unvalidated environments (not blockers, not claimed to work or fail): GNOME,
 GTK-specific testing, X11, Kubuntu/Ubuntu and other Debian desktops,
@@ -167,26 +167,62 @@ explicit authorization.
 
 1. Empty every unchecked box above (with evidence) or consciously
    disposition it in a release-notes paragraph.
-2. Tag-time metadata, together in one commit: add
-   `<releases><release version="0.1.0" date="YYYY-MM-DD"/></releases>` to
-   `org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in` (after `<project_group>`),
-   keep `project(... VERSION 0.1.0)`, retitle `RELEASE-NOTES.md` from "draft,
-   unreleased" and date it, and add a dated `%changelog` entry for the same
-   version in `packaging/fedora/fcitx5-oxpinyin.spec`. Rerun `install-check.py`,
-   `artifact-check.py` (AppStream validates the release entry) and
-   `i18n-check.py source`.
+2. Version metadata, together in one commit, all naming the same `X.Y.Z`:
+   - `project(... VERSION X.Y.Z)` in `CMakeLists.txt`;
+   - `Version:` and a dated `%changelog` entry in
+     `packaging/fedora/fcitx5-oxpinyin.spec`;
+   - a new `<release version="X.Y.Z" date="YYYY-MM-DD"/>` first in `<releases>`
+     in `org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in`;
+   - the title and date of `RELEASE-NOTES.md`, which becomes the release body;
+   - a new first entry in `packaging/debian/changelog`.
+
+   Rerun `install-check.py`, `artifact-check.py` (AppStream validates the
+   release entry; the DEB check fails unless the changelog's newest entry is
+   the packaged version) and `i18n-check.py source`. Merge it.
 3. Run the full gate matrix on that release commit: both compilers (baseline,
    Cloud, Lua), clang-format, ASan+UBSan, clang-tidy, fuzz smoke, commit lint,
    same-binary substitution gate, install/package checks and the
    Fedora-native `mock` build with `validate-rpm.py`. Rerun the manual KDE
    acceptance only if the release commit changes the packaged payload.
-4. Push the `vX.Y.Z` tag (the spec's `Source0` expects that tag archive).
-   Pushing the tag is the publication step: `.github/workflows/release.yml`
-   builds the Fedora 44 RPM and SRPM from GitHub's archive of the tag, checks
-   that the spec and `project()` versions match it, runs `validate-rpm.py`,
-   the stock-libpinyin dependency check and the disposable-install smoke,
-   creates the GitHub Release from `RELEASE-NOTES.md` if it does not exist,
-   and attaches the RPM, the SRPM and `SHA256SUMS`. The same workflow can be
-   dispatched manually with a `tag` input to rebuild the assets of an
-   existing tag. Only then update distro/packaging claims anywhere they
-   appear.
+4. Rehearse on the merged commit before any tag exists: dispatch
+   `.github/workflows/release.yml` with `dry_run: true` and `ref: main`. It
+   runs every build and validation step of a release and never starts the job
+   that can write to one.
+5. Push the `vX.Y.Z` tag (the spec's `Source0` expects that tag archive).
+   Pushing the tag is the publication step; the workflow does the rest:
+   - checks that the tag, `project()`, the spec and the newest
+     `packaging/debian/changelog` entry name the same version;
+   - builds the Fedora 44 RPM and SRPM from GitHub's archive of the tag, and
+     runs `validate-rpm.py`, the stock-libpinyin dependency check and the
+     disposable-install smoke;
+   - builds the Debian testing DEB and TXZ with `debian-build.sh` (tests,
+     `artifact-check.py`, lintian with no error or warning), checks the DEB's
+     version and stock-`libpinyin15` dependency, and installs it in a fresh
+     Debian testing container;
+   - writes one `SHA256SUMS` over the four assets, creates the GitHub Release
+     from `RELEASE-NOTES.md` **as a draft**, uploads everything, downloads it
+     back, verifies the exact asset set and every hash, and only then
+     publishes. On any failure the draft stays unpublished and the run fails;
+     a new run empties and reuses that draft.
+
+   Only then update distro/packaging claims anywhere they appear.
+
+### Rebuilding the assets of an existing tag
+
+Dispatch the workflow with a `tag` input. A release that is already published
+is refused unless `replace: true` is also set. Replacing saves the current
+assets as the run artifact `previous-release-assets`, logs a content
+comparison (file lists, per-file digests, dependencies; rebuilds are not
+byte-reproducible, so differences are reported, not failed on), uploads over
+them and verifies as above. There is no automatic rollback: if it fails
+part-way, restore with
+
+```sh
+gh run download <run-id> -n previous-release-assets -D previous
+rm previous/previous-assets.json
+gh release upload <tag> previous/* --clobber
+```
+
+`dry_run: true` with a `tag` shows what a real run would do, including that
+comparison, without writing. A tag whose tree has no
+`packaging/debian/changelog` (v0.1.0) gets Fedora assets only.

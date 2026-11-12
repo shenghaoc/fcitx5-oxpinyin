@@ -1,11 +1,23 @@
 name: Release assets
 
-# Publication step. Pushing a `v*` tag builds the Fedora 44 RPM and SRPM from
-# GitHub's own archive of that tag (the spec's Source0), validates them, and
-# attaches them to the GitHub Release (created from RELEASE-NOTES.md when it
-# does not exist yet). `workflow_dispatch` with a `tag` input rebuilds and
-# re-attaches the assets of an existing tag using this workflow from the
-# default branch; the tag itself is never moved or created here.
+# Publication step. Pushing a `vX.Y.Z` tag builds the release assets from that
+# tag, validates them and publishes them on the GitHub Release:
+#
+#   - Fedora 44 RPM and SRPM, built from GitHub's own archive of the tag (the
+#     spec's Source0);
+#   - Debian testing DEB and TXZ (CPack), built by the same recipe
+#     artifacts.yml runs on every pull request. Skipped for a tag whose tree
+#     has no packaging/debian/changelog (v0.1.0), which predates the DEB
+#     license and changelog fixes;
+#   - one SHA256SUMS over all of them.
+#
+# A new release is created as a draft, the assets are uploaded, downloaded
+# back and verified, and only then is it published. A release that is already
+# published is never touched unless the workflow is dispatched with
+# `replace: true`. `dry_run: true` runs every build and validation step and
+# never starts the job that can write to a release; with it, `ref` may name a
+# branch or commit instead of a tag. The tag itself is never moved or created
+# here.
 #
 # These are upstream prebuilt packages, not a distribution repository entry.
 
@@ -15,29 +27,156 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build and attach assets for (e.g. v0.1.0)
-        required: true
+        description: Existing tag to build assets for (e.g. v0.1.1)
+        required: false
         type: string
+      ref:
+        description: Dry run only. Branch or commit to build in place of a tag
+        required: false
+        type: string
+      dry_run:
+        description: Build and validate everything, write nothing to any release
+        required: false
+        type: boolean
+        default: false
+      replace:
+        description: Replace the assets of a release that is already published
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-assets-${{ inputs.tag || github.ref_name }}
+  group: release-assets-${{ inputs.tag || inputs.ref || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  # Never interpolated into a script body; always read as "$TAG".
-  TAG: ${{ inputs.tag || github.ref_name }}
-
 jobs:
+  plan:
+    name: Resolve what to build
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.inputs.outputs.mode }}
+      tag: ${{ steps.inputs.outputs.tag }}
+      dry_run: ${{ steps.inputs.outputs.dry_run }}
+      replace: ${{ steps.inputs.outputs.replace }}
+      sha: ${{ steps.tree.outputs.sha }}
+      version: ${{ steps.tree.outputs.version }}
+      debian: ${{ steps.tree.outputs.debian }}
+    steps:
+      - name: Validate inputs
+        id: inputs
+        env:
+          # Never interpolated into a script body; always read as "$NAME".
+          EVENT_NAME: ${{ github.event_name }}
+          PUSHED_REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_REPLACE: ${{ inputs.replace }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          tag='' dry_run=false replace=false
+          case "$EVENT_NAME" in
+            push)
+              mode=tag tag="$PUSHED_REF_NAME"
+              ;;
+            workflow_dispatch)
+              [[ $INPUT_DRY_RUN == true ]] && dry_run=true
+              [[ $INPUT_REPLACE == true ]] && replace=true
+              if [[ -n $INPUT_TAG && -n $INPUT_REF ]]; then
+                fail 'give either tag or ref, not both'
+              elif [[ -n $INPUT_TAG ]]; then
+                mode=tag tag="$INPUT_TAG"
+              elif [[ -n $INPUT_REF ]]; then
+                mode=ref
+                [[ $dry_run == true ]] || fail 'ref is accepted only with dry_run: true'
+                [[ $replace == false ]] || fail 'replace has no meaning with ref'
+                [[ $INPUT_REF =~ ^[A-Za-z0-9._/-]+$ ]] || fail 'ref has unexpected characters'
+              else
+                fail 'tag is required (or ref, with dry_run: true)'
+              fi
+              ;;
+            *)
+              fail "unsupported event $EVENT_NAME"
+              ;;
+          esac
+          if [[ $mode == tag ]]; then
+            [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tag '$tag' is not of the form vX.Y.Z"
+            checkout_ref="refs/tags/$tag"
+          else
+            checkout_ref="$INPUT_REF"
+          fi
+          {
+            echo "mode=$mode"
+            echo "tag=$tag"
+            echo "dry_run=$dry_run"
+            echo "replace=$replace"
+            echo "checkout_ref=$checkout_ref"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.inputs.outputs.checkout_ref }}
+          persist-credentials: false
+      - name: Resolve commit, version and whether Debian assets are built
+        id: tree
+        env:
+          MODE: ${{ steps.inputs.outputs.mode }}
+          TAG: ${{ steps.inputs.outputs.tag }}
+          DRY_RUN: ${{ steps.inputs.outputs.dry_run }}
+          REPLACE: ${{ steps.inputs.outputs.replace }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          sha="$(git rev-parse HEAD)"
+          project="$(sed -n 's/^project(fcitx5-oxpinyin VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          [[ -n $project ]] || fail 'no project() VERSION in CMakeLists.txt'
+          # A tag fixes the version; without one, project() is the reference
+          # and the spec and changelog are compared against it.
+          if [[ $MODE == tag ]]; then version="${TAG#v}"; else version="$project"; fi
+          [[ $project == "$version" ]] || fail "project() VERSION $project != $version"
+          if [[ -f packaging/debian/changelog ]]; then
+            changelog="$(sed -n '1s/^fcitx5-oxpinyin (\([^)]*\)).*/\1/p' packaging/debian/changelog)"
+            [[ $changelog == "$version" ]] ||
+              fail "newest packaging/debian/changelog entry '$changelog' != $version"
+            debian=true
+          else
+            debian=false
+            echo "::notice title=Debian assets skipped::This tree has no packaging/debian/changelog, so it predates the DEB license and changelog fixes. No DEB or TXZ is built or uploaded for it; only the Fedora assets are."
+          fi
+          {
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "debian=$debian"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '### Release plan'
+            echo "- mode: \`$MODE\` ${TAG:+(tag \`$TAG\`)}"
+            echo "- commit: \`$sha\`"
+            echo "- version: \`$version\`"
+            echo "- Debian assets: \`$debian\`"
+            echo "- dry run: \`$DRY_RUN\`, replace: \`$REPLACE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-notes
+          path: RELEASE-NOTES.md
+          if-no-files-found: error
+
   fedora:
     name: Fedora 44 RPM and SRPM
+    needs: plan
     runs-on: ubuntu-latest
     container: fedora:44
     defaults:
       run:
         shell: bash
+    env:
+      MODE: ${{ needs.plan.outputs.mode }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - name: Prerequisites
         run: >-
@@ -46,49 +185,48 @@ jobs:
           glibc-langpack-en curl
           gcc-c++ extra-cmake-modules fcitx5-devel fcitx5-chinese-addons-devel
           libpinyin-devel
-      - name: Validate tag name
-        run: |
-          set -euo pipefail
-          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "error: tag '$TAG' is not of the form vX.Y.Z" >&2; exit 1;
-          }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Version in spec and project() must match the tag
+      - name: Version in spec and project() must match
         run: |
           set -euo pipefail
-          want="${TAG#v}"
           spec="$(rpmspec -q --srpm --qf '%{version}\n' packaging/fedora/fcitx5-oxpinyin.spec | head -n1)"
           cmake_version="$(sed -n 's/^project(fcitx5-oxpinyin VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
-          echo "tag=$want spec=$spec project()=$cmake_version"
-          [[ $spec == "$want" ]] || { echo "error: spec Version $spec != tag $want" >&2; exit 1; }
-          [[ $cmake_version == "$want" ]] || { echo "error: project() VERSION $cmake_version != tag $want" >&2; exit 1; }
-          echo "VERSION=$want" >> "$GITHUB_ENV"
-      - name: Download GitHub's tag archive as Source0
+          echo "expected=$VERSION spec=$spec project()=$cmake_version"
+          [[ $spec == "$VERSION" ]] || { echo "error: spec Version $spec != $VERSION" >&2; exit 1; }
+          [[ $cmake_version == "$VERSION" ]] || { echo "error: project() VERSION $cmake_version != $VERSION" >&2; exit 1; }
+      - name: Source0 and SRPM
         run: |
           set -euo pipefail
           top="$PWD/build-release"
-          mkdir -p "$top/SOURCES" "$top/SPECS" "$top/SRPMS"
-          source0="$top/SOURCES/fcitx5-oxpinyin-$VERSION.tar.gz"
-          curl -sSfL --retry 3 -o "$source0" \
-            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
-          (cd "$top/SOURCES" && sha256sum "fcitx5-oxpinyin-$VERSION.tar.gz") | tee "$top/source-archive.sha256"
-          {
-            echo "### Source0 (GitHub archive of \`$TAG\`)"
-            echo '```'
-            cat "$top/source-archive.sha256"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build SRPM, resolve BuildRequires, rebuild
+          if [[ $MODE == tag ]]; then
+            # GitHub's own archive of the tag, exactly what the spec's Source0 names.
+            mkdir -p "$top/SOURCES" "$top/SPECS" "$top/SRPMS"
+            source0="$top/SOURCES/fcitx5-oxpinyin-$VERSION.tar.gz"
+            curl -sSfL --retry 3 -o "$source0" \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
+            (cd "$top/SOURCES" && sha256sum "fcitx5-oxpinyin-$VERSION.tar.gz") | tee "$top/source-archive.sha256"
+            {
+              echo "### Source0 (GitHub archive of \`$TAG\`)"
+              echo '```'
+              cat "$top/source-archive.sha256"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            cp packaging/fedora/fcitx5-oxpinyin.spec "$top/SPECS/"
+            rpmbuild -bs --define "_topdir $top" "$top/SPECS/fcitx5-oxpinyin.spec"
+          else
+            # Dry run of a branch or commit: no tag archive exists, so the
+            # tarball is `git archive` of the commit (same layout under $top).
+            packaging/fedora/build-srpm.sh "$top"
+          fi
+      - name: Resolve BuildRequires, rebuild
         run: |
           set -euo pipefail
           top="$PWD/build-release"
-          cp packaging/fedora/fcitx5-oxpinyin.spec "$top/SPECS/"
-          rpmbuild -bs --define "_topdir $top" "$top/SPECS/fcitx5-oxpinyin.spec"
           dnf builddep -y "$top"/SRPMS/*.src.rpm
           rpmbuild --rebuild --define "_topdir $top/rebuild" "$top"/SRPMS/*.src.rpm
       - name: validate-rpm.py
@@ -117,22 +255,18 @@ jobs:
           cmake --build build-probe -j2 --target package-runtime
           OXPINYIN_RPM="$(ls "$PWD"/build-release/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm)" \
             bash .github/scripts/minimal-runtime.sh build-probe
-      - name: Collect assets and checksums
+      - name: Collect assets
         run: |
           set -euo pipefail
           top="$PWD/build-release"
           mkdir dist
           cp "$top"/rebuild/RPMS/x86_64/fcitx5-oxpinyin-[0-9]*.rpm "$top"/SRPMS/*.src.rpm dist/
-          (cd dist && sha256sum -- *.rpm > SHA256SUMS && cat SHA256SUMS)
-          {
-            echo '### Release assets'
-            echo '```'
-            cat dist/SHA256SUMS
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          # Guards the transfer between jobs; the published SHA256SUMS is
+          # written once, over all assets, by the assemble job.
+          (cd dist && sha256sum -- *.rpm > fedora.sha256 && cat fedora.sha256)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-assets
+          name: release-assets-fedora
           path: dist/
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -143,43 +277,314 @@ jobs:
             build-release/source-archive.sha256
             build-probe/minimal-runtime-*
 
+  debian:
+    name: Debian testing DEB and TXZ
+    needs: plan
+    # Old-tag rule: never build a DEB from a tree without the license and
+    # changelog fixes. The plan job announces the skip.
+    if: needs.plan.outputs.debian == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      # Containers are started with `docker run`, as in artifacts.yml, because
+      # the runtime step below needs a second, fresh one.
+      - name: Build, test, inspect and lint (the recipe artifacts.yml runs)
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work debian:testing \
+            bash .github/scripts/debian-build.sh build-debian
+      - name: Version, architecture and stock-libpinyin dependency
+        run: |
+          set -euo pipefail
+          deb="$(ls build-debian/fcitx5-oxpinyin-*.deb)"
+          field() { dpkg-deb -f "$deb" "$1"; }
+          echo "Version=$(field Version) Architecture=$(field Architecture)"
+          echo "Depends=$(field Depends)"
+          [[ $(field Version) == "$VERSION" ]] || { echo "error: DEB Version != $VERSION" >&2; exit 1; }
+          [[ $(field Architecture) == amd64 ]] || { echo 'error: DEB is not amd64' >&2; exit 1; }
+          if field Depends | grep -i oxpinyin; then
+            echo 'error: the package depends on something named oxpinyin' >&2; exit 1
+          fi
+          field Depends | tr ',' '\n' | grep -Eq '^ *libpinyin15( |$)' || {
+            echo 'error: missing dependency libpinyin15' >&2; exit 1;
+          }
+      - name: Fresh Debian testing container, install and headless smoke
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work debian:testing \
+            bash .github/scripts/debian-runtime.sh build-debian
+      - name: Collect assets
+        run: |
+          set -euo pipefail
+          mkdir dist
+          # CPack's own names say only "Linux"; the assets name what they
+          # were built on.
+          cp build-debian/fcitx5-oxpinyin-*.deb "dist/fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb"
+          cp build-debian/fcitx5-oxpinyin-*.tar.xz "dist/fcitx5-oxpinyin-$VERSION-debian-testing-x86_64.tar.xz"
+          (cd dist && sha256sum -- *.deb *.tar.xz > debian.sha256 && cat debian.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets-debian
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: release-debian-evidence
+          path: |
+            build-debian/artifact-evidence.json
+            build-debian/lintian.txt
+            build-debian/debian-runtime-*
+
+  assemble:
+    name: Assemble and check the asset set
+    needs: [plan, fedora, debian]
+    # The debian job may be skipped only by the old-tag rule. A failed Debian
+    # build stops here, so a new tag never gets a Fedora-only release.
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success' && needs.fedora.result == 'success'
+      && (needs.debian.result == 'success'
+      || (needs.debian.result == 'skipped' && needs.plan.outputs.debian == 'false')) }}
+    runs-on: ubuntu-latest
+    # Fedora, so that the RPMs are read by the rpm that built them.
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+      actions: read # fetch this run's artifacts with gh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      DEBIAN: ${{ needs.plan.outputs.debian }}
+      DRY_RUN: ${{ needs.plan.outputs.dry_run }}
+      REPLACE: ${{ needs.plan.outputs.replace }}
+    steps:
+      - name: Prerequisites
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False git gh jq dpkg tar xz
+          diffutils findutils
+      # This workflow's own commit, for release-compare.sh; the tree being
+      # released may be older than that script.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch the built assets
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/assets bundle/meta
+          gh run download "$GITHUB_RUN_ID" --name release-notes --dir bundle/meta
+          gh run download "$GITHUB_RUN_ID" --name release-assets-fedora --dir bundle/assets
+          if [[ $DEBIAN == true ]]; then
+            gh run download "$GITHUB_RUN_ID" --name release-assets-debian --dir bundle/assets
+          fi
+          cd bundle/assets
+          for sums in *.sha256; do sha256sum -c --strict "$sums"; done
+          rm -- *.sha256
+      - name: Exact asset set and one SHA256SUMS
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd bundle/assets
+          rpms=(fcitx5-oxpinyin-"$VERSION"-*.x86_64.rpm)
+          srpms=(fcitx5-oxpinyin-"$VERSION"-*.src.rpm)
+          (( ${#rpms[@]} == 1 && ${#srpms[@]} == 1 )) || {
+            echo "error: expected one RPM and one SRPM for $VERSION" >&2; ls -l; exit 1;
+          }
+          expected=("${rpms[0]}" "${srpms[0]}")
+          if [[ $DEBIAN == true ]]; then
+            expected+=("fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb"
+                       "fcitx5-oxpinyin-$VERSION-debian-testing-x86_64.tar.xz")
+          fi
+          want="$(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)"
+          have="$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          [[ $have == "$want" ]] || {
+            echo 'error: the built asset set is not the expected one' >&2
+            diff <(echo "$want") <(echo "$have") >&2 || true
+            exit 1
+          }
+          mapfile -t names <<<"$want"
+          sha256sum -- "${names[@]}" > SHA256SUMS
+          {
+            echo '### Release assets'
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Back up and compare against a published release
+        id: previous
+        if: needs.plan.outputs.mode == 'tag'
+        run: |
+          set -euo pipefail
+          # A read token lists published releases only; drafts are seen, and
+          # every rule enforced, by the upload job.
+          gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
+            jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag and .draft == false)]' > published.json
+          count="$(jq length published.json)"
+          (( count <= 1 )) || { echo "error: $count published releases for $TAG" >&2; exit 1; }
+          if (( count == 0 )); then
+            decision="No published release for \`$TAG\` is visible: a real run creates a draft (or reuses one), uploads, verifies and publishes."
+          else
+            jq '.[0].assets | map({name, size, digest}) | sort_by(.name)' published.json > bundle/meta/previous-assets.json
+            mkdir previous
+            if (( $(jq length bundle/meta/previous-assets.json) > 0 )); then
+              gh release download "$TAG" --dir previous
+            fi
+            cp bundle/meta/previous-assets.json previous/previous-assets.json
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            bash .github/scripts/release-compare.sh previous bundle/assets | tee compare.txt
+            {
+              echo "### Content comparison with the published \`$TAG\` assets"
+              echo 'Informational: rebuilds are not byte-reproducible.'
+              echo '```diff'
+              cat compare.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [[ $REPLACE == true ]]; then
+              decision="\`$TAG\` is published and \`replace\` is set: a real run replaces its assets (backup: artifact \`previous-release-assets\`)."
+            else
+              decision="\`$TAG\` is published and \`replace\` is not set: a real run refuses to touch it."
+            fi
+          fi
+          [[ $DRY_RUN == true ]] && decision="DRY RUN, nothing is written. $decision"
+          echo "::notice title=Publication::$decision"
+          { echo '### Publication'; echo "$decision"; } >> "$GITHUB_STEP_SUMMARY"
+      # Restore with:
+      #   gh run download <run> -n previous-release-assets -D previous
+      #   rm previous/previous-assets.json
+      #   gh release upload <tag> previous/* --clobber
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.previous.outputs.exists == 'true'
+        with:
+          name: previous-release-assets
+          path: previous/
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle
+          path: bundle/
+          if-no-files-found: error
+
   upload:
-    name: Attach assets to the GitHub Release
-    needs: fedora
+    name: Publish to the GitHub Release
+    needs: [plan, assemble]
+    # The only job that can write. It does not start for a dry run or for a
+    # ref build, so neither ever holds a write token.
+    if: >-
+      ${{ !cancelled() && needs.assemble.result == 'success'
+      && needs.plan.outputs.mode == 'tag' && needs.plan.outputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the release if missing, upload assets
+      contents: write # create, fill and publish the release
       actions: read # fetch this run's artifact with gh
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      REPLACE: ${{ needs.plan.outputs.replace }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: refs/tags/${{ env.TAG }}
-          persist-credentials: false
-      - name: Fetch the built assets
+      - name: Fetch the assembled bundle
         run: |
           set -euo pipefail
-          gh run download "$GITHUB_RUN_ID" --name release-assets --dir dist
-          (cd dist && sha256sum -c SHA256SUMS)
-      - name: Create the release if it does not exist
+          gh run download "$GITHUB_RUN_ID" --name release-bundle --dir bundle
+          cd bundle/assets
+          sha256sum -c --strict SHA256SUMS
+          # SHA256SUMS covers every asset and names nothing else.
+          diff <(awk '{print $2}' SHA256SUMS | LC_ALL=C sort) \
+               <(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort)
+      - name: Release state and refusal rules
+        id: state
         run: |
           set -euo pipefail
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "release $TAG already exists; only assets are replaced"
+          fail() { echo "::error::$1"; exit 1; }
+          # A write token also lists drafts.
+          gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
+            jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' > releases.json
+          count="$(jq length releases.json)"
+          (( count <= 1 )) || fail "$count release objects exist for $TAG; resolve that by hand"
+          if (( count == 0 )); then
+            state=none
+          elif [[ $(jq -r '.[0].draft' releases.json) == true ]]; then
+            state=draft
           else
-            gh release create "$TAG" --title "fcitx5-oxpinyin ${TAG#v}" \
-              --notes-file RELEASE-NOTES.md --verify-tag
+            state=published
           fi
-      - name: Upload RPM, SRPM and SHA256SUMS
+          echo "release state for $TAG: $state"
+          if [[ $state == published ]]; then
+            [[ $REPLACE == true ]] ||
+              fail "release $TAG is already published; dispatch with replace: true to replace its assets"
+            # The backup taken by the assemble job must still be the release.
+            [[ -f bundle/meta/previous-assets.json ]] ||
+              fail "release $TAG was published after this run backed it up; nothing was changed"
+            diff <(jq -S '.[0].assets | map({name, size, digest}) | sort_by(.name)' releases.json) \
+                 <(jq -S . bundle/meta/previous-assets.json) ||
+              fail "release $TAG changed after this run backed it up; nothing was changed"
+            # --clobber replaces same-named assets only; anything else would
+            # be left behind, outside SHA256SUMS.
+            stale="$(comm -23 <(jq -r '.[0].assets[].name' releases.json | LC_ALL=C sort) \
+                              <(find bundle/assets -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort))"
+            [[ -z $stale ]] ||
+              fail "release $TAG has assets the new set does not replace; remove them by hand first: $stale"
+          fi
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Create the draft release
+        if: steps.state.outputs.state == 'none'
         run: |
           set -euo pipefail
-          gh release upload "$TAG" dist/*.rpm dist/SHA256SUMS --clobber
-      # CPack DEB/TXZ stay out until
-      # https://github.com/shenghaoc/fcitx5-oxpinyin/issues/32 is fixed (the
-      # payloads ship no LICENSE and the DEB carries CPack's default Section).
-      # Then build them the way artifacts.yml's `debian` job does, add them to
-      # SHA256SUMS and enable:
-      # - name: Upload CPack DEB and TXZ
-      #   run: gh release upload "$TAG" dist/*.deb dist/*.tar.xz --clobber
+          gh release create "$TAG" --draft --verify-tag \
+            --title "fcitx5-oxpinyin ${TAG#v}" --notes-file bundle/meta/RELEASE-NOTES.md
+      - name: Empty the existing draft (title and notes are kept)
+        if: steps.state.outputs.state == 'draft'
+        run: |
+          set -euo pipefail
+          jq -r '.[0].assets[].id' releases.json | while read -r id; do
+            gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
+          done
+      - name: Upload the assets and SHA256SUMS
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" bundle/assets/* --clobber
+      - name: Download back and verify the complete set and every hash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
+            jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' > after.json
+          [[ $(jq length after.json) == 1 ]]
+          want="$(find bundle/assets -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          # Exactly the built set is attached, and every upload completed.
+          diff <(echo "$want") <(jq -r '.[0].assets[].name' after.json | LC_ALL=C sort)
+          [[ $(jq '[.[0].assets[] | select(.state != "uploaded")] | length' after.json) == 0 ]]
+          mkdir verify
+          gh release download "$TAG" --dir verify
+          diff <(echo "$want") <(find verify -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          cmp verify/SHA256SUMS bundle/assets/SHA256SUMS
+          (cd verify && sha256sum -c --strict SHA256SUMS)
+      - name: Publish the release
+        if: steps.state.outputs.state != 'published'
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
+          [[ $(gh release view "$TAG" --json isDraft --jq .isDraft) == false ]]
+          gh release view "$TAG" --json url --jq '"Published: " + .url' | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Explain what a failure left behind
+        if: failure()
+        env:
+          STATE: ${{ steps.state.outputs.state }}
+        run: |
+          if [[ $STATE == published ]]; then
+            echo "::error::Replacing the assets of $TAG failed part-way; the release may hold a mix. Restore the previous assets with: gh run download $GITHUB_RUN_ID -n previous-release-assets -D previous && rm previous/previous-assets.json && gh release upload $TAG previous/* --clobber"
+          elif [[ -n $STATE ]]; then
+            echo "::error::Nothing was published. If a draft release for $TAG exists it was left as a draft; a new run empties and reuses it."
+          else
+            echo "::error::Nothing was written to any release."
+          fi
