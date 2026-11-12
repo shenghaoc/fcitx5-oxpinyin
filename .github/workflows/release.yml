@@ -445,9 +445,17 @@ jobs:
           gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
             jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag and .draft == false)]' > published.json
           count="$(jq length published.json)"
-          (( count <= 1 )) || { echo "error: $count published releases for $TAG" >&2; exit 1; }
+          (( count <= 1 )) || { echo "error: expected at most 1 published release for $TAG, found $count" >&2; exit 1; }
           if (( count == 0 )); then
-            decision="No published release for \`$TAG\` is visible: a real run creates a draft (or reuses one), uploads, verifies and publishes."
+            # Visible only if this token may see drafts (a read token usually
+            # may not: then the upload job decides, with its write token).
+            drafts="$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
+              jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag and .draft == true)] | length')"
+            if (( drafts == 1 )); then
+              decision="No published release for \`$TAG\`, but a draft exists and is reusable: a real run empties it, uploads, verifies and publishes."
+            else
+              decision="No published release for \`$TAG\` is visible ($drafts draft(s) visible to this token): a real run creates a draft (or reuses one), uploads, verifies and publishes."
+            fi
           else
             jq '.[0].assets | map({name, size, digest}) | sort_by(.name)' published.json > bundle/meta/previous-assets.json
             mkdir previous
@@ -514,7 +522,8 @@ jobs:
           sha256sum -c --strict SHA256SUMS
           # SHA256SUMS covers every asset and names nothing else.
           diff <(awk '{print $2}' SHA256SUMS | LC_ALL=C sort) \
-               <(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort)
+               <(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort) ||
+            { echo '::error::SHA256SUMS does not name exactly the assets present (diff above: SHA256SUMS vs files)'; exit 1; }
       - name: Release state and refusal rules
         id: state
         run: |
@@ -524,7 +533,8 @@ jobs:
           gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
             jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' > releases.json
           count="$(jq length releases.json)"
-          (( count <= 1 )) || fail "$count release objects exist for $TAG; resolve that by hand"
+          (( count <= 1 )) || fail "expected at most 1 release object for $TAG, found $count; resolve that by hand"
+          release_id=''
           if (( count == 0 )); then
             state=none
           elif [[ $(jq -r '.[0].draft' releases.json) == true ]]; then
@@ -532,63 +542,124 @@ jobs:
           else
             state=published
           fi
-          echo "release state for $TAG: $state"
+          if (( count == 1 )); then
+            release_id="$(jq -r '.[0].id' releases.json)"
+            [[ $release_id =~ ^[0-9]+$ ]] || fail "expected a numeric release id; got '$release_id'"
+          fi
+          echo "release state for $TAG: $state (id: ${release_id:-none yet})"
           if [[ $state == published ]]; then
             [[ $REPLACE == true ]] ||
-              fail "release $TAG is already published; dispatch with replace: true to replace its assets"
+              fail "expected replace=true to touch the published release $TAG; got replace=$REPLACE (dispatch with replace: true to replace its assets)"
             # The backup taken by the assemble job must still be the release.
             [[ -f bundle/meta/previous-assets.json ]] ||
-              fail "release $TAG was published after this run backed it up; nothing was changed"
+              fail "expected bundle/meta/previous-assets.json (the assemble job's backup) but it is missing: $TAG was published after this run backed it up; nothing was changed"
             diff <(jq -S '.[0].assets | map({name, size, digest}) | sort_by(.name)' releases.json) \
                  <(jq -S . bundle/meta/previous-assets.json) ||
-              fail "release $TAG changed after this run backed it up; nothing was changed"
+              fail "release $TAG differs from the backup (live vs backup diff above); nothing was changed"
             # --clobber replaces same-named assets only; anything else would
             # be left behind, outside SHA256SUMS.
             stale="$(comm -23 <(jq -r '.[0].assets[].name' releases.json | LC_ALL=C sort) \
                               <(find bundle/assets -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort))"
             [[ -z $stale ]] ||
-              fail "release $TAG has assets the new set does not replace; remove them by hand first: $stale"
+              fail "expected no assets outside the new set; release $TAG also has: $stale (remove them by hand first)"
           fi
           echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
       - name: Create the draft release
+        id: create
         if: steps.state.outputs.state == 'none'
         run: |
           set -euo pipefail
-          gh release create "$TAG" --draft --verify-tag \
-            --title "fcitx5-oxpinyin ${TAG#v}" --notes-file bundle/meta/RELEASE-NOTES.md
+          # gh api creates a release for a missing tag from the default branch
+          # (gh release create --verify-tag refused that), so check the tag.
+          gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .ref ||
+            { echo "::error::tag $TAG does not exist in $GH_REPO; refusing to create a release (and with it a tag)"; exit 1; }
+          # The response carries the release ID, so nothing later depends on a
+          # lookup by tag or on the list endpoint.
+          jq -n --arg tag "$TAG" --arg name "fcitx5-oxpinyin ${TAG#v}" \
+                --rawfile body bundle/meta/RELEASE-NOTES.md \
+                '{tag_name: $tag, name: $name, body: $body, draft: true}' |
+            gh api -X POST "repos/$GH_REPO/releases" --input - > created.json
+          id="$(jq -r '.id' created.json)"
+          draft="$(jq -r '.draft' created.json)"
+          [[ $id =~ ^[0-9]+$ && $draft == true ]] || {
+            echo "::error::expected a numeric release id and draft=true; got id='$id' draft='$draft'"
+            cat created.json
+            exit 1
+          }
+          echo "created draft release $id for $TAG"
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
       - name: Empty the existing draft (title and notes are kept)
         if: steps.state.outputs.state == 'draft'
+        env:
+          RELEASE_ID: ${{ steps.state.outputs.release_id }}
         run: |
           set -euo pipefail
-          jq -r '.[0].assets[].id' releases.json | while read -r id; do
-            gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
-          done
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '.assets[].id' |
+            while read -r id; do
+              echo "deleting asset $id of release $RELEASE_ID"
+              gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
+            done
       - name: Upload the assets and SHA256SUMS
         run: |
           set -euo pipefail
           gh release upload "$TAG" bundle/assets/* --clobber
       - name: Download back and verify the complete set and every hash
+        env:
+          RELEASE_ID: ${{ steps.create.outputs.release_id || steps.state.outputs.release_id }}
         run: |
           set -euo pipefail
-          gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
-            jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' > after.json
-          [[ $(jq length after.json) == 1 ]]
-          want="$(find bundle/assets -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
-          # Exactly the built set is attached, and every upload completed.
-          diff <(echo "$want") <(jq -r '.[0].assets[].name' after.json | LC_ALL=C sort)
-          [[ $(jq '[.[0].assets[] | select(.state != "uploaded")] | length' after.json) == 0 ]]
+          [[ $RELEASE_ID =~ ^[0-9]+$ ]] || {
+            echo "::error::no release id was recorded (got '$RELEASE_ID')"; exit 1;
+          }
+          # Name and size of every file that must be attached, one per line.
+          want="$(cd bundle/assets && for f in *; do printf '%s %s\n' "$f" "$(stat -c %s -- "$f")"; done | LC_ALL=C sort)"
+          # By ID: this endpoint returns drafts, the list endpoint may lag.
+          tries=5
+          for ((i = 1; i <= tries; i++)); do
+            gh api "repos/$GH_REPO/releases/$RELEASE_ID" > after.json
+            have="$(jq -r '.assets[] | "\(.name) \(.size)"' after.json | LC_ALL=C sort)"
+            bad="$(jq -r '.assets[] | select(.state != "uploaded") | "\(.name) state=\(.state)"' after.json)"
+            if [[ $have == "$want" && -z $bad ]]; then
+              echo "attempt $i/$tries: release $RELEASE_ID holds exactly the built set, all uploaded"
+              break
+            fi
+            echo "attempt $i/$tries: release $RELEASE_ID does not match yet" >&2
+            if (( i == tries )); then
+              echo "::error::release $RELEASE_ID: attached assets differ from the built set after $tries attempts"
+              echo "expected (name size):" >&2; echo "$want" >&2
+              echo "got (name size):" >&2; echo "$have" >&2
+              echo "not in state uploaded: ${bad:-none}" >&2
+              exit 1
+            fi
+            sleep 3
+          done
           mkdir verify
-          gh release download "$TAG" --dir verify
-          diff <(echo "$want") <(find verify -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
-          cmp verify/SHA256SUMS bundle/assets/SHA256SUMS
+          jq -r '.assets[] | "\(.id) \(.name)"' after.json | while read -r id name; do
+            gh api -H 'Accept: application/octet-stream' "repos/$GH_REPO/releases/assets/$id" > "verify/$name"
+          done
+          got="$(cd verify && for f in *; do printf '%s %s\n' "$f" "$(stat -c %s -- "$f")"; done | LC_ALL=C sort)"
+          [[ $got == "$want" ]] || {
+            echo "::error::downloaded files differ from the built set"
+            echo "expected (name size):" >&2; echo "$want" >&2
+            echo "got (name size):" >&2; echo "$got" >&2
+            exit 1
+          }
+          cmp verify/SHA256SUMS bundle/assets/SHA256SUMS ||
+            { echo "::error::downloaded SHA256SUMS differs from the built one"; exit 1; }
           (cd verify && sha256sum -c --strict SHA256SUMS)
       - name: Publish the release
         if: steps.state.outputs.state != 'published'
+        env:
+          RELEASE_ID: ${{ steps.create.outputs.release_id || steps.state.outputs.release_id }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --draft=false
-          [[ $(gh release view "$TAG" --json isDraft --jq .isDraft) == false ]]
-          gh release view "$TAG" --json url --jq '"Published: " + .url' | tee -a "$GITHUB_STEP_SUMMARY"
+          gh api -X PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -F draft=false > published.json
+          draft="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq .draft)"
+          [[ $draft == false ]] || {
+            echo "::error::release $RELEASE_ID: expected draft=false after publishing; got draft=$draft"; exit 1;
+          }
+          jq -r '"Published: " + .html_url' published.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Explain what a failure left behind
         if: failure()
         env:
