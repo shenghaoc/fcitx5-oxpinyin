@@ -156,14 +156,26 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
 # Debian uses a versioned runtime-library package and a standalone punctuation
 # module. The broad chinese-addons metapackage would pull optional modules in.
 # Native Debian shlibdeps/policy validation is still required before publishing.
+# libpinyin-data is not named: libpinyin15 depends on its exact data version.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "fcitx5 (>= ${REQUIRED_FCITX_VERSION}), fcitx5-module-punctuation, libpinyin15, libpinyin-data")
+    "fcitx5 (>= ${REQUIRED_FCITX_VERSION}), fcitx5-module-punctuation, libpinyin15")
+# The extended description; CPack puts CPACK_PACKAGE_DESCRIPTION_SUMMARY on
+# the first line of the control field and formats these lines below it.
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
+    "Fcitx 5 input method addon for full pinyin, double pinyin and Zhuyin.
+It uses the libpinyin engine through its C library and ships no engine or
+language model of its own.")
+# Strip the addon in every CPack package. This applies to CPack's staging
+# install only; a plain `cmake --install` and the Fedora-native build (where
+# rpmbuild strips and keeps debuginfo) are unaffected.
+set(CPACK_STRIP_FILES ON)
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= ${REQUIRED_FCITX_VERSION}, fcitx5-chinese-addons, libpinyin")
 # CPack's default Section is "devel"; this is an input-method addon, and
 # Debian files the other fcitx5 addons under "utils".
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-# License files are staged by CPack alone (see the script), so that a plain
-# `cmake --install`, and the Fedora-native RPM built from one, gain no file.
+# License files and the Debian changelog are staged by CPack alone (see the
+# script), so that a plain `cmake --install`, and the Fedora-native RPM built
+# from one, gain no file.
 set(CPACK_INSTALL_SCRIPTS
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/cpack/license-files.cmake")
 # The CPack RPM's copy is tagged %license; /usr/share/licenses itself belongs

@@ -88,7 +88,8 @@ jobs:
               fcitx5-module-chttrans fcitx5-module-fullwidth \
               gettext python3 dpkg-dev rpm cpio appstream file
             cmake -B build-debian -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-              -DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON
+              -DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON \
+              -DCMAKE_MODULE_LINKER_FLAGS=-Wl,-z,now
             cmake --build build-debian -j2
             ctest --test-dir build-debian --output-on-failure
             python3 .github/scripts/artifact-check.py build-debian
