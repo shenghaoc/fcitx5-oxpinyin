@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inspect generated artifacts; generation success alone is insufficient."""
 import configparser
+import gzip
 import json
 import re
 import shutil
@@ -108,7 +109,7 @@ for generator, suffix in [('TXZ', '.tar.xz'), ('RPM', '.rpm'), ('DEB', '.deb')]:
             payload = subprocess.check_output(['rpm2cpio', str(artifact)])
             subprocess.run(['cpio', '-id', '--quiet'], input=payload, cwd=root, check=True)
         if dependencies:
-            required_deps = ['fcitx5', 'fcitx5-module-punctuation', 'libpinyin15', 'libpinyin-data'] if generator == 'DEB' else ['fcitx5', 'fcitx5-chinese-addons', 'libpinyin']
+            required_deps = ['fcitx5', 'fcitx5-module-punctuation', 'libpinyin15'] if generator == 'DEB' else ['fcitx5', 'fcitx5-chinese-addons', 'libpinyin']
             names = dependency_names(dependencies)
             for dependency in required_deps:
                 assert dependency in names, (generator, dependency, sorted(names))
@@ -117,6 +118,19 @@ for generator, suffix in [('TXZ', '.tar.xz'), ('RPM', '.rpm'), ('DEB', '.deb')]:
             for optional in ['cloudpinyin', 'fcitx5-lua', 'quickphrase']:
                 assert not any(optional in name for name in names), (generator, optional)
         check_license(generator, root, artifact)
+        # CPACK_STRIP_FILES: no package ships the addon with its symbol table.
+        addon = next(p for p in root.rglob('oxpinyin.so'))
+        described = subprocess.check_output(['file', '-b', str(addon)], text=True)
+        assert ', stripped' in described, (generator, described)
+        if generator == 'DEB':
+            def field(name):
+                return subprocess.check_output(['dpkg-deb', '-f', str(artifact), name], text=True)
+            # A synopsis line followed by a non-empty extended description.
+            synopsis, _, extended = field('Description').partition('\n')
+            assert synopsis.strip() and extended.strip(), (synopsis, extended)
+            # Debian changelog, whose newest entry is the packaged version.
+            changelog = gzip.decompress((root / 'usr/share/doc/fcitx5-oxpinyin/changelog.gz').read_bytes())
+            assert changelog.startswith(f"fcitx5-oxpinyin ({field('Version').strip()}) ".encode()), changelog[:80]
         if generator == 'RPM':
             prefix = root / 'usr'
             env = dict(__import__('os').environ)

@@ -47,6 +47,23 @@ files exist in CPack's staging tree alone. `artifact-check.py` fails if a
 package lacks its file, carries another format's, or the DEB `Section` is not
 `utils`.
 
+## CPack DEB contents
+
+Beyond the license, the DEB is shaped to pass `lintian` without errors:
+
+- The addon is stripped (`CPACK_STRIP_FILES`, which applies to every CPack
+  package and to CPack's staging install only).
+- The control file has an extended description
+  (`CPACK_DEBIAN_PACKAGE_DESCRIPTION`).
+- `/usr/share/doc/fcitx5-oxpinyin/changelog.gz` is `packaging/debian/changelog`,
+  staged by the same CPack-only script. **Add an entry there for every
+  release**: `artifact-check.py` fails unless the newest entry is the packaged
+  version, the addon is stripped and the extended description is non-empty.
+- The Debian validation build links with `-Wl,-z,now`, passed on the command
+  line in `artifacts.yml` (lintian's `hardening-no-bindnow`). It is not set in
+  `CMakeLists.txt`, so other builds keep their distribution's link flags; a
+  DEB meant for publication must be configured the same way.
+
 ## Translations
 
 Catalogs are exactly the languages in `po/LINGUAS` (`zh_CN`, `zh_TW`); the
@@ -132,7 +149,8 @@ prove a clean package-manager installation resolves every dependency.
 
 CPack's package-name declarations must be mapped to the target distro.
 Fedora's `libpinyin` name is not Debian's versioned runtime library name.
-The DEB declaration now uses `libpinyin15`/`libpinyin-data` and the standalone
+The DEB declaration uses `libpinyin15` (which itself depends on its exact
+`libpinyin-data` version, so the data package is not named) and the standalone
 `fcitx5-module-punctuation`, avoiding the broad chinese-addons metapackage.
 Reference: [Debian libpinyin15](https://packages.debian.org/en/libpinyin15)
 and [Chinese addon packages](https://packages.debian.org/search?keywords=fcitx5-chinese-addons&searchon=sourcenames).
