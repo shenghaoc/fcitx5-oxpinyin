@@ -37,6 +37,33 @@ required = ['fcitx5/oxpinyin.so', 'fcitx5/addon/oxpinyin.conf',
             'fcitx5/inputmethod/oxpinyin.conf',
             'metainfo/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml']
 records = []
+# How the license reaches each package (packaging/cpack/license-files.cmake).
+license_text = (Path(__file__).resolve().parents[2] / 'LICENSE').read_bytes()
+license_files = {'TXZ': 'share/doc/fcitx5-oxpinyin/LICENSE',
+                 'RPM': 'usr/share/licenses/fcitx5-oxpinyin/LICENSE',
+                 'DEB': 'usr/share/doc/fcitx5-oxpinyin/copyright'}
+def check_license(generator, root, artifact):
+    # Exactly the one expected file: a DEB with a stray LICENSE or a TXZ with
+    # a Debian copyright file fails here too.
+    found = [p for p in root.rglob('*') if p.is_file()
+             and p.name.lower().startswith(('copyright', 'license', 'copying'))]
+    # The TXZ payload sits below its <name>-<version>-<system>/ directory.
+    top = next(root.iterdir()) if generator == 'TXZ' else root
+    assert found == [top / license_files[generator]], (generator, found)
+    if generator == 'DEB':
+        copyright = found[0].read_text()
+        assert copyright.startswith(
+            'Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n')
+        # Files patterns name source paths: the metainfo template, CC0-1.0.
+        assert re.search(r'^Files: org\.fcitx\.Fcitx5\.Addon\.Oxpinyin\.metainfo\.xml\.in\n'
+                         r'Copyright: .*\nLicense: CC0-1\.0$', copyright, re.M), copyright
+        section = subprocess.check_output(['dpkg-deb', '-f', str(artifact), 'Section'], text=True)
+        assert section.strip() == 'utils', section
+    else:
+        assert found[0].read_bytes() == license_text, (generator, found)
+    if generator == 'RPM':
+        tagged = subprocess.check_output(['rpm', '-qpL', str(artifact)], text=True)
+        assert tagged.split() == ['/' + license_files['RPM']], tagged
 def check_tree(root):
     files = [p for p in root.rglob('*') if p.is_file()]
     for suffix in required:
@@ -89,6 +116,7 @@ for generator, suffix in [('TXZ', '.tar.xz'), ('RPM', '.rpm'), ('DEB', '.deb')]:
                 (generator, 'versioned fcitx5 requirement', dependencies)
             for optional in ['cloudpinyin', 'fcitx5-lua', 'quickphrase']:
                 assert not any(optional in name for name in names), (generator, optional)
+        check_license(generator, root, artifact)
         if generator == 'RPM':
             prefix = root / 'usr'
             env = dict(__import__('os').environ)

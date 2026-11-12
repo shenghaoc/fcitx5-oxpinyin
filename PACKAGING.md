@@ -28,6 +28,25 @@ relationships and hard/optional dependencies, runs AppStream validation and
 `.github/scripts/i18n-check.py payload` on every extracted payload.
 Evidence is saved in the build directory, never committed.
 
+## Licensing per format
+
+No `install()` rule ships a license file, so a plain `cmake --install` has
+none; `install-check.py` fails if one appears. Each package adds its own:
+
+- **CPack DEB**: `/usr/share/doc/fcitx5-oxpinyin/copyright`, the DEP-5 file
+  `packaging/debian/copyright` (GPL-3.0-or-later; CC0-1.0 for the metainfo),
+  which refers to `/usr/share/common-licenses` instead of carrying the texts.
+- **CPack TXZ**: the full `LICENSE` at `share/doc/fcitx5-oxpinyin/LICENSE`.
+- **CPack RPM**: the full `LICENSE` at
+  `/usr/share/licenses/fcitx5-oxpinyin/LICENSE`, tagged `%license`.
+- **Fedora-native RPM**: the spec's `%license LICENSE`, independent of CPack.
+
+The CPack files are staged by `packaging/cpack/license-files.cmake`, which
+runs through `CPACK_INSTALL_SCRIPTS`: only CPack reads that variable, so the
+files exist in CPack's staging tree alone. `artifact-check.py` fails if a
+package lacks its file, carries another format's, or the DEB `Section` is not
+`utils`.
+
 ## Translations
 
 Catalogs are exactly the languages in `po/LINGUAS` (`zh_CN`, `zh_TW`); the

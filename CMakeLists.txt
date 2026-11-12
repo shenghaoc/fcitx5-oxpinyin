@@ -159,6 +159,18 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
     "fcitx5 (>= ${REQUIRED_FCITX_VERSION}), fcitx5-module-punctuation, libpinyin15, libpinyin-data")
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= ${REQUIRED_FCITX_VERSION}, fcitx5-chinese-addons, libpinyin")
+# CPack's default Section is "devel"; this is an input-method addon, and
+# Debian files the other fcitx5 addons under "utils".
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+# License files are staged by CPack alone (see the script), so that a plain
+# `cmake --install`, and the Fedora-native RPM built from one, gain no file.
+set(CPACK_INSTALL_SCRIPTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/cpack/license-files.cmake")
+# The CPack RPM's copy is tagged %license; /usr/share/licenses itself belongs
+# to the distribution's filesystem package, not to this one.
+set(CPACK_RPM_USER_FILELIST
+    "%license /usr/share/licenses/${CPACK_PACKAGE_NAME}/LICENSE")
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/usr/share/licenses")
 include(CPack)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
