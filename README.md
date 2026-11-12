@@ -8,7 +8,7 @@ libpinyin-compatible C ABI (`pinyin.h`). It links stock
 that exports the same C ABI, substitutes for it at install time (see
 "Engine substitution" below).
 
-**Status:** version 0.1.0 is released on 2026-11-12. The frontend feature set
+**Status:** version 0.1.1 is released on 2026-11-12. The frontend feature set
 described below is implemented and covered by a headless regression suite;
 Fedora/KDE/Wayland package-installed acceptance is complete. Broader desktop
 coverage and distro submissions remain outstanding; CPack artifacts are validated.
@@ -170,7 +170,7 @@ to point tests at explicit model-data directories with
 
 ## Installation and packaging status
 
-The 0.1.0 source release is published as the `v0.1.0` tag and its GitHub
+The 0.1.1 source release is published as the `v0.1.1` tag and its GitHub
 Release. GitHub Releases carry prebuilt packages, built upstream by the release
 workflow: a Fedora 44 RPM and SRPM and, starting with 0.1.1, a Debian testing
 DEB and TXZ, with one `SHA256SUMS` over all of them. v0.1.0 carries only the

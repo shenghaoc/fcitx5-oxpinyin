@@ -140,7 +140,7 @@ from the committed tree with `git archive`):
 ```sh
 packaging/fedora/build-srpm.sh build-srpm            # tarball + SRPM
 mock -r fedora-44-x86_64 --rebuild build-srpm/SRPMS/*.src.rpm --resultdir out
-packaging/fedora/validate-rpm.py out/fcitx5-oxpinyin-0.1.0-*.x86_64.rpm \
+packaging/fedora/validate-rpm.py out/fcitx5-oxpinyin-0.1.1-*.x86_64.rpm \
     out/*.src.rpm
 ```
 
@@ -151,7 +151,7 @@ identifiers, dependencies, absence of RPATH/RUNPATH, no build-tree paths in the
 payload, AppStream validation and the translation payload. The installed RPM
 is then exercised in a disposable Fedora 44 install root with the existing
 TestFrontend smoke:
-`OXPINYIN_RPM="$(ls out/fcitx5-oxpinyin-0.1.0-*.x86_64.rpm)" bash .github/scripts/minimal-runtime.sh BUILD`
+`OXPINYIN_RPM="$(ls out/fcitx5-oxpinyin-0.1.1-*.x86_64.rpm)" bash .github/scripts/minimal-runtime.sh BUILD`
 (the CI `fedora-native` job does all of this with `dnf builddep` +
 `rpmbuild --rebuild`; the local reference is the clean `mock` build). This
 does not replace real KDE acceptance.
