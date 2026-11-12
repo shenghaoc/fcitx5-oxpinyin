@@ -537,6 +537,12 @@ jobs:
             jq -r '.[] | "  id=\(.id) draft=\(.draft) tag_name=\(.tag_name) name=\(.name)"' releases.json >&2
             fail "$count releases match $TAG; resolve that by hand"
           fi
+          if (( count == 1 )); then
+            m_tag="$(jq -r '.[0].tag_name' releases.json)"
+            if [[ $m_tag != "$TAG" && $m_tag != untagged-* ]]; then
+              fail "draft $(jq -r '.[0].id' releases.json) is titled for $TAG but tagged $m_tag; resolve by hand"
+            fi
+          fi
           release_id=''
           if (( count == 0 )); then
             state=none
