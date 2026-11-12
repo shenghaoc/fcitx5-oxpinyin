@@ -524,10 +524,19 @@ jobs:
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
           # A write token also lists drafts.
+          # A release matches by tag, or is a draft with the title this
+          # workflow sets: a draft can show an untagged-... placeholder as its
+          # tag_name, and must not be duplicated.
+          title="fcitx5-oxpinyin ${TAG#v}"
           gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
-            jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' > releases.json
+            jq -s --arg tag "$TAG" --arg title "$title" \
+              '[.[] | select(.tag_name == $tag or (.draft == true and .name == $title))]' > releases.json
           count="$(jq length releases.json)"
-          (( count <= 1 )) || fail "expected at most 1 release object for $TAG, found $count; resolve that by hand"
+          if (( count > 1 )); then
+            echo "expected at most 1 release matching tag $TAG or draft title '$title'; found $count:" >&2
+            jq -r '.[] | "  id=\(.id) draft=\(.draft) tag_name=\(.tag_name) name=\(.name)"' releases.json >&2
+            fail "$count releases match $TAG; resolve that by hand"
+          fi
           release_id=''
           if (( count == 0 )); then
             state=none
@@ -589,6 +598,11 @@ jobs:
           RELEASE_ID: ${{ steps.state.outputs.release_id }}
         run: |
           set -euo pipefail
+          # First write: pin the tag (a draft may show an untagged-... placeholder).
+          got="$(gh api -X PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -f tag_name="$TAG" --jq '.tag_name')"
+          [[ $got == "$TAG" ]] || {
+            echo "::error::release $RELEASE_ID: expected tag_name=$TAG after pinning; got tag_name=$got"; exit 1;
+          }
           gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '.assets[].id' |
             while read -r id; do
               echo "deleting asset $id of release $RELEASE_ID"
@@ -648,12 +662,20 @@ jobs:
           RELEASE_ID: ${{ steps.create.outputs.release_id || steps.state.outputs.release_id }}
         run: |
           set -euo pipefail
-          gh api -X PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -F draft=false > published.json
-          draft="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq .draft)"
-          [[ $draft == false ]] || {
-            echo "::error::release $RELEASE_ID: expected draft=false after publishing; got draft=$draft"; exit 1;
-          }
-          jq -r '"Published: " + .html_url' published.json | tee -a "$GITHUB_STEP_SUMMARY"
+          # Every write pins the tag.
+          gh api -X PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -f tag_name="$TAG" -F draft=false > /dev/null
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > published.json
+          draft="$(jq -r .draft published.json)"
+          tag_name="$(jq -r .tag_name published.json)"
+          html_url="$(jq -r .html_url published.json)"
+          if [[ $draft != false || $tag_name != "$TAG" || $html_url != */releases/tag/"$TAG" ]]; then
+            echo "::error::release $RELEASE_ID is not published as expected" >&2
+            echo "  draft:     expected false; got $draft" >&2
+            echo "  tag_name:  expected $TAG; got $tag_name" >&2
+            echo "  html_url:  expected …/releases/tag/$TAG; got $html_url" >&2
+            exit 1
+          fi
+          echo "Published: $html_url" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Explain what a failure left behind
         if: failure()
         env:
