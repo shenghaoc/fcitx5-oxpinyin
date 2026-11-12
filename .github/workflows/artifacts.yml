@@ -78,22 +78,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Native Debian build and package inspection
+      # The recipe (dependencies, flags, ctest, artifact-check, lintian) is
+      # shared with release.yml's debian job.
+      - name: Native Debian build, package inspection and lintian
         run: |
-          docker run --rm -v "$PWD:/work" -w /work debian:testing sh -ec '
-            apt-get update
-            apt-get install -y --no-install-recommends g++ cmake make git \
-              extra-cmake-modules libfcitx5core-dev libfcitx5utils-dev \
-              fcitx5-modules-dev fcitx5-module-punctuation-dev libpinyin15-dev \
-              fcitx5-module-chttrans fcitx5-module-fullwidth \
-              gettext python3 dpkg-dev rpm cpio appstream file
-            cmake -B build-debian -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-              -DCPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON \
-              -DCMAKE_MODULE_LINKER_FLAGS=-Wl,-z,now
-            cmake --build build-debian -j2
-            ctest --test-dir build-debian --output-on-failure
-            python3 .github/scripts/artifact-check.py build-debian
-          '
+          docker run --rm -v "$PWD:/work" -w /work debian:testing \
+            bash .github/scripts/debian-build.sh build-debian
       - name: Fresh Debian runtime container
         run: |
           docker run --rm -v "$PWD:/work" -w /work debian:testing \
@@ -104,4 +94,5 @@ jobs:
           name: debian-package-validation-evidence
           path: |
             build-debian/artifact-evidence.json
+            build-debian/lintian.txt
             build-debian/debian-runtime-*

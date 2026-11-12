@@ -5,8 +5,9 @@ Four distinct things are described here; do not conflate them:
 1. **CMake install** — `cmake --install` (DESTDIR or `--prefix=`), the base
    every package is built from. Checked by `install-check.py`.
 2. **CPack RPM/DEB/TXZ** — convenience/validation packages generated from the
-   install rules (the sections below). Supported and validated; no DEB/TXZ is
-   published yet.
+   install rules (the sections below). Supported and validated. The DEB and
+   TXZ built on Debian testing are release assets starting with 0.1.1; the
+   CPack RPM is never published.
 3. **Fedora-native `.spec`** — `packaging/fedora/fcitx5-oxpinyin.spec`, see
    [Fedora-native packaging](#fedora-native-packaging). Reference material for
    upstream; it packages the addon only.
@@ -16,10 +17,31 @@ Four distinct things are described here; do not conflate them:
 
 CPack and the spec are independent: the spec does not replace or alter CPack.
 
-A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository
-entry exists) are attached to the GitHub Release; no DEB/TXZ is published yet.
+## What a GitHub Release carries
 
-CPack outputs are local validation artifacts, not published distro packages.
+`.github/workflows/release.yml` builds, validates and attaches, per tag:
+
+- `fcitx5-oxpinyin-<ver>-<rel>.fc44.x86_64.rpm` and `.src.rpm`: the Fedora-native
+  spec, built in a Fedora 44 container from GitHub's archive of the tag;
+- starting with 0.1.1, `fcitx5-oxpinyin-<ver>-debian-testing-amd64.deb` and
+  `fcitx5-oxpinyin-<ver>-debian-testing-x86_64.tar.xz`: the CPack DEB and TXZ,
+  built in a Debian testing container by `.github/scripts/debian-build.sh`
+  (the recipe `artifacts.yml` runs on every pull request), then installed in
+  a fresh Debian testing container. The TXZ unpacks to
+  `fcitx5-oxpinyin-<ver>-Linux/`, CPack's own name;
+- one `SHA256SUMS` over all of them.
+
+v0.1.0 carries only the RPM and SRPM: its tree predates the DEB license and
+changelog fixes, and the workflow never builds Debian assets from a tree
+without `packaging/debian/changelog`.
+
+These are upstream prebuilt packages. No distribution repository entry
+exists, and nothing is claimed for Debian stable, Ubuntu or any other
+release: the DEB depends on the library versions of Debian testing at build
+time. It depends on stock `libpinyin15`, never on oxpinyin.
+
+## Validating locally
+
 Run `.github/scripts/install-check.py BUILD` and
 `.github/scripts/artifact-check.py BUILD` after a `/usr`-prefix build.
 The latter requires rpm-build/rpm2cpio, cpio, dpkg-deb and appstreamcli; it
@@ -49,7 +71,9 @@ package lacks its file, carries another format's, or the DEB `Section` is not
 
 ## CPack DEB contents
 
-Beyond the license, the DEB is shaped to pass `lintian` without errors:
+Beyond the license, the DEB is shaped to pass `lintian` without errors or
+warnings; `debian-build.sh` runs `lintian --fail-on error,warning`, so both
+pull requests and releases fail on one:
 
 - The addon is stripped (`CPACK_STRIP_FILES`, which applies to every CPack
   package and to CPack's staging install only).
@@ -59,10 +83,11 @@ Beyond the license, the DEB is shaped to pass `lintian` without errors:
   staged by the same CPack-only script. **Add an entry there for every
   release**: `artifact-check.py` fails unless the newest entry is the packaged
   version, the addon is stripped and the extended description is non-empty.
-- The Debian validation build links with `-Wl,-z,now`, passed on the command
-  line in `artifacts.yml` (lintian's `hardening-no-bindnow`). It is not set in
-  `CMakeLists.txt`, so other builds keep their distribution's link flags; a
-  DEB meant for publication must be configured the same way.
+- The Debian build links with `-Wl,-z,now`, passed on the command line by
+  `debian-build.sh` (lintian's `hardening-no-bindnow`). It is not set in
+  `CMakeLists.txt`, so other builds keep their distribution's link flags.
+  The pull-request check and the release build share that script, so the
+  published DEB is configured exactly as the validated one.
 
 ## Translations
 
@@ -167,8 +192,9 @@ On 2026-10-01 these checks passed locally on Fedora 44 and Debian unstable,
 including AppStream validation and all five baseline tests in both native
 build environments. Package-root/container changes never touch the live IM.
 A Fedora-native `.spec` now exists (above); `debian/` policy packaging remains
-a later project, separate from CPack content validation. Do not publish these
-artifacts without explicit maintainer authorization.
+a later project, separate from CPack content validation. Packages are
+published only by the release workflow, which the maintainer starts by pushing
+a tag; do not publish artifacts from any other build.
 
 ## Oxpinyin replacement data contract
 

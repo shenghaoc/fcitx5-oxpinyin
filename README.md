@@ -171,9 +171,12 @@ to point tests at explicit model-data directories with
 ## Installation and packaging status
 
 The 0.1.0 source release is published as the `v0.1.0` tag and its GitHub
-Release. A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution
-repository entry exists) are attached to the GitHub Release; no DEB/TXZ is
-published yet. What exists today:
+Release. GitHub Releases carry prebuilt packages, built upstream by the release
+workflow: a Fedora 44 RPM and SRPM and, starting with 0.1.1, a Debian testing
+DEB and TXZ, with one `SHA256SUMS` over all of them. v0.1.0 carries only the
+RPM and SRPM. No distribution repository entry exists, and nothing is claimed
+for Debian stable, Ubuntu or any other release: the DEB is built and checked on
+Debian testing only. What exists today:
 
 - a relocatable install tree from `cmake --install` (addon library,
   input-method and addon config files, translations, AppStream metainfo),
