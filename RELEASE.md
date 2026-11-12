@@ -33,7 +33,7 @@ The gate results below are historical; the 0.1.0 release commit's gate matrix is
 | Automated testing       | Final gate matrix, 2026-10-01, clean export of the top-of-stack commit in Fedora 44 containers with warnings-as-errors: GCC and Clang Release baseline 5/5; Cloud 7/7 and Lua 6/6 on both compilers; Clang ASan+UBSan 5/5; fuzz-enabled suite 6/6; clang-tidy 0 findings; clang-format clean; commit lint and linter self-test 31/31. CI additionally runs the pinned same-binary substitution gate on every pull-request update and by manual dispatch (it does not run on direct pushes to `main`). See [TESTING.md](TESTING.md) |
 | Engine compatibility    | **Frontend scope complete.** The addon uses only the libpinyin-compatible C ABI. The reproducible same-binary `libpinyin.so.15` substitution gate (`tools/engine-substitution/`) runs one unchanged addon binary under pinned libpinyin 2.11.92 and Rust oxpinyin (Tkrzw/model20) and compares bounded captures as integration evidence. Behavioural parity with libpinyin is **not** claimed and is not a frontend release criterion; engine defects belong in the oxpinyin repository. See [TESTING.md](TESTING.md) |
 | Desktop integration     | **Declared 0.1.0 scope accepted.** Fedora 44 KDE Plasma Wayland, Qt/KDE applications, basic Chrome input and clean Plasma/Fcitx restart validated by manual acceptance on 2026-09-30 using verified addon/engine binaries. Fedora 44 KDE Wayland acceptance was repeated on 2026-10-04 with the Fedora-native RPM installed. No automated desktop harness exists. Other environments are unvalidated (listed below), not broken. See [TESTING.md](TESTING.md) |
-| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; starting with 0.1.1 the release workflow also attaches a Debian testing DEB and TXZ (v0.1.0 carries only the RPM and SRPM; nothing is claimed for Debian stable, Ubuntu or other releases). Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
+| Packaging               | **Validated CPack artifacts and a Fedora-native `.spec`.** CPack RPM/DEB/TXZ contents, dependency resolution and installed-addon TestFrontend validation (Fedora 44 RPM, Debian unstable DEB) as of 2026-10-01. `packaging/fedora/fcitx5-oxpinyin.spec` clean-builds in `mock` for Fedora 44 (tests, AppStream and rpmlint clean, disposable install + headless smoke). It is reference material: **no Fedora/COPR submission has happened and no official availability is claimed.** A prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release; starting with 0.1.1 the release workflow also attaches a Debian testing DEB; the CPack TXZ is a CI-validated build artifact only (v0.1.0 carries only the RPM and SRPM; nothing is claimed for Debian stable, Ubuntu or other releases). Debian-policy `debian/` packaging is a later project. See [PACKAGING.md](PACKAGING.md) |
 | Internationalization    | Initial `zh_CN` and `zh_TW` catalogs ship through the project gettext pipeline; `.mo` placement, loading and manifest/metainfo translations are verified for DESTDIR, direct-prefix, RPM, DEB and TXZ payloads. Other locales are untranslated English |
 
 The release tree keeps `project()` at `0.1.1` and has a matching AppStream
@@ -59,7 +59,7 @@ Settled by the maintainer:
   `debian/` packaging is a later project.
 
 No substantive pre-0.1.0 work remains: translations, the Fedora-native spec,
-the package-installed Fedora KDE acceptance and final hardening are done. The maintainer authorized the 0.1.0 tag and GitHub Release on 2026-11-12; a prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release. v0.1.0 carries only those; starting with 0.1.1 the release workflow also attaches a Debian testing DEB and TXZ.
+the package-installed Fedora KDE acceptance and final hardening are done. The maintainer authorized the 0.1.0 tag and GitHub Release on 2026-11-12; a prebuilt Fedora 44 RPM and SRPM (built upstream; no distribution repository entry exists) are attached to the GitHub Release. v0.1.0 carries only those; starting with 0.1.1 the release workflow also attaches a Debian testing DEB (the CPack TXZ is a CI-validated build artifact, not a release asset).
 
 Unvalidated environments (not blockers, not claimed to work or fail): GNOME,
 GTK-specific testing, X11, Kubuntu/Ubuntu and other Debian desktops,
@@ -202,10 +202,11 @@ explicit authorization.
      runs `validate-rpm.py`, the stock-libpinyin dependency check and the
      disposable-install smoke;
    - builds the Debian testing DEB and TXZ with `debian-build.sh` (tests,
-     `artifact-check.py`, lintian with no error or warning), checks the DEB's
+     `artifact-check.py`, lintian with no error or warning; only the DEB is
+     published, the TXZ stays a CI-validated build artifact), checks the DEB's
      version and stock-`libpinyin15` dependency, and installs it in a fresh
      Debian testing container;
-   - writes one `SHA256SUMS` over the four assets, creates the GitHub Release
+   - writes one `SHA256SUMS` over the three assets (RPM, SRPM, DEB), creates the GitHub Release
      from `RELEASE-NOTES.md` **as a draft**, uploads everything, downloads it
      back, verifies the exact asset set and every hash, and only then
      publishes. On any failure the draft stays unpublished and the run fails;

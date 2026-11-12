@@ -173,7 +173,8 @@ to point tests at explicit model-data directories with
 The 0.1.1 source release is published as the `v0.1.1` tag and its GitHub
 Release. GitHub Releases carry prebuilt packages, built upstream by the release
 workflow: a Fedora 44 RPM and SRPM and, starting with 0.1.1, a Debian testing
-DEB and TXZ, with one `SHA256SUMS` over all of them. v0.1.0 carries only the
+DEB, with one `SHA256SUMS` over all of them. The CPack TXZ is validated in CI
+and is not a release asset. v0.1.0 carries only the
 RPM and SRPM. No distribution repository entry exists, and nothing is claimed
 for Debian stable, Ubuntu or any other release: the DEB is built and checked on
 Debian testing only. What exists today:

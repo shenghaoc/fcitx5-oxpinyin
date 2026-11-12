@@ -15,10 +15,10 @@ for what the frontend does.
 
 ## Changes since 0.1.0
 
-- **Debian testing DEB and TXZ release assets.** The GitHub Release now also
-  carries `fcitx5-oxpinyin-0.1.1-debian-testing-amd64.deb` and
-  `fcitx5-oxpinyin-0.1.1-debian-testing-x86_64.tar.xz`, next to the Fedora 44
-  RPM and SRPM, with one `SHA256SUMS` over all four. They are built and
+- **Debian testing DEB release asset.** The GitHub Release now also carries
+  `fcitx5-oxpinyin-0.1.1-debian-testing-amd64.deb`, next to the Fedora 44
+  RPM and SRPM, with one `SHA256SUMS` over all three. The CPack TXZ is built
+  and validated in CI but is not a release asset. The DEB is built and
   installed on Debian testing only; nothing is claimed for Debian stable,
   Ubuntu or any other release, and no distribution repository entry exists.
 - **License files in the CPack packages.** The DEB ships a DEP-5
