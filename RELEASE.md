@@ -215,14 +215,27 @@ assets as the run artifact `previous-release-assets`, logs a content
 comparison (file lists, per-file digests, dependencies; rebuilds are not
 byte-reproducible, so differences are reported, not failed on), uploads over
 them and verifies as above. There is no automatic rollback: if it fails
-part-way, restore with
+part-way, the failed job prints these commands with the values filled in. They
+put the backup back, then delete, by asset ID, every asset the backup does not
+name (anything the failed run added):
 
 ```sh
 gh run download <run-id> -n previous-release-assets -D previous
-rm previous/previous-assets.json
+mv previous/previous-assets.json .
 gh release upload <tag> previous/* --clobber
+gh api repos/<owner>/<repo>/releases/tags/<tag> --jq '.assets[] | "\(.id) \(.name)"' |
+  while read -r id name; do
+    jq -e --arg name "$name" 'any(.[]; .name == $name)' previous-assets.json > /dev/null ||
+      gh api -X DELETE "repos/<owner>/<repo>/releases/assets/$id"
+  done
 ```
 
 `dry_run: true` with a `tag` shows what a real run would do, including that
-comparison, without writing. A tag whose tree has no
-`packaging/debian/changelog` (v0.1.0) gets Fedora assets only.
+comparison, without writing.
+
+v0.1.0 is the one historical, Fedora-only release: the workflow skips the
+Debian build for that tag alone. Any other tag, or a `ref` dry run, must have
+`packaging/debian/changelog` and `.github/scripts/debian-build.sh` in its
+tree; otherwise the run fails before building anything. A release is built
+and validated by the scripts in its own tree, so a tree without them cannot
+be released by this workflow.

@@ -32,8 +32,9 @@ CPack and the spec are independent: the spec does not replace or alter CPack.
 - one `SHA256SUMS` over all of them.
 
 v0.1.0 carries only the RPM and SRPM: its tree predates the DEB license and
-changelog fixes, and the workflow never builds Debian assets from a tree
-without `packaging/debian/changelog`.
+changelog fixes, and it is the only tag the workflow releases without Debian
+assets. Any other tree must contain `packaging/debian/changelog` and
+`.github/scripts/debian-build.sh`, or the run fails before building.
 
 These are upstream prebuilt packages. No distribution repository entry
 exists, and nothing is claimed for Debian stable, Ubuntu or any other
