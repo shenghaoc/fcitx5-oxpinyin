@@ -39,6 +39,13 @@ pacman -S --needed base-devel clang cmake ninja git extra-cmake-modules \
 This repository's own continuous integration runs exactly such a container,
 so any distro providing equivalent packages works.
 
+Workflow actions are pinned by full commit SHA with a trailing `# vX.Y.Z`
+comment. Dependabot proposes weekly updates of those pins, mirroring
+[oxpinyin](https://github.com/shenghaoc/oxpinyin)'s configuration (no
+grouping, so each action gets its own PR); review and merge them like any
+other PR. Dependabot does not follow branch refs, so the `fcitx/github-actions`
+pin (`# clang-format branch`) is bumped by hand.
+
 ## Configure options
 
 | Option                     | Default     | Effect                                                                                                          |
