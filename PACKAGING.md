@@ -5,9 +5,10 @@ Four distinct things are described here; do not conflate them:
 1. **CMake install** — `cmake --install` (DESTDIR or `--prefix=`), the base
    every package is built from. Checked by `install-check.py`.
 2. **CPack RPM/DEB/TXZ** — convenience/validation packages generated from the
-   install rules (the sections below). Supported and validated. The DEB and
-   TXZ built on Debian testing are release assets starting with 0.1.1; the
-   CPack RPM is never published.
+   install rules (the sections below). Supported and validated. The DEB built
+   on Debian testing is a release asset starting with 0.1.1; the CPack TXZ
+   is a CI-validated build artifact only and the CPack RPM is never
+   published.
 3. **Fedora-native `.spec`** — `packaging/fedora/fcitx5-oxpinyin.spec`, see
    [Fedora-native packaging](#fedora-native-packaging). Reference material for
    upstream; it packages the addon only.
@@ -23,12 +24,13 @@ CPack and the spec are independent: the spec does not replace or alter CPack.
 
 - `fcitx5-oxpinyin-<ver>-<rel>.fc44.x86_64.rpm` and `.src.rpm`: the Fedora-native
   spec, built in a Fedora 44 container from GitHub's archive of the tag;
-- starting with 0.1.1, `fcitx5-oxpinyin-<ver>-debian-testing-amd64.deb` and
-  `fcitx5-oxpinyin-<ver>-debian-testing-x86_64.tar.xz`: the CPack DEB and TXZ,
-  built in a Debian testing container by `.github/scripts/debian-build.sh`
-  (the recipe `artifacts.yml` runs on every pull request), then installed in
-  a fresh Debian testing container. The TXZ unpacks to
-  `fcitx5-oxpinyin-<ver>-Linux/`, CPack's own name;
+- starting with 0.1.1, `fcitx5-oxpinyin-<ver>-debian-testing-amd64.deb`: the
+  CPack DEB, built in a Debian testing container by
+  `.github/scripts/debian-build.sh` (the recipe `artifacts.yml` runs on every
+  pull request), then installed in a fresh Debian testing container. That
+  build also produces and checks the CPack TXZ (it unpacks to
+  `fcitx5-oxpinyin-<ver>-Linux/`, CPack's own name), but the TXZ is not
+  published;
 - one `SHA256SUMS` over all of them.
 
 v0.1.0 carries only the RPM and SRPM: its tree predates the DEB license and

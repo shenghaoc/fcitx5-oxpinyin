@@ -5,8 +5,9 @@ name: Release assets
 #
 #   - Fedora 44 RPM and SRPM, built from GitHub's own archive of the tag (the
 #     spec's Source0);
-#   - Debian testing DEB and TXZ (CPack), built by the same recipe
-#     artifacts.yml runs on every pull request. Skipped for v0.1.0 alone,
+#   - Debian testing DEB (CPack), built by the same recipe artifacts.yml runs
+#     on every pull request (which also builds and checks the CPack TXZ; it is
+#     validated there and is not a release asset). Skipped for v0.1.0 alone,
 #     the historical Fedora-only release. Any other tree must contain
 #     packaging/debian/changelog and .github/scripts/debian-build.sh, or the
 #     run fails before building: each tree is built and validated by its own
@@ -147,7 +148,7 @@ jobs:
           if [[ $MODE == tag && $TAG == v0.1.0 ]]; then
             # The one historical, Fedora-only release.
             debian=false
-            echo "::notice title=Debian assets skipped::v0.1.0 is the historical Fedora-only release: its tree predates the DEB license and changelog fixes. No DEB or TXZ is built or uploaded for it; only the Fedora assets are."
+            echo "::notice title=Debian assets skipped::v0.1.0 is the historical Fedora-only release: its tree predates the DEB license and changelog fixes. No DEB is built or uploaded for it; only the Fedora assets are."
           else
             # Everything else must carry the Debian release packaging. A tree
             # is validated by its own scripts, never by this workflow
@@ -293,7 +294,7 @@ jobs:
             build-probe/minimal-runtime-*
 
   debian:
-    name: Debian testing DEB and TXZ
+    name: Debian testing DEB
     needs: plan
     # Skipped for v0.1.0 only; the plan job announces that, and fails for any
     # other tree that lacks the Debian release packaging.
@@ -338,8 +339,8 @@ jobs:
           # CPack's own names say only "Linux"; the assets name what they
           # were built on.
           cp build-debian/fcitx5-oxpinyin-*.deb "dist/fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb"
-          cp build-debian/fcitx5-oxpinyin-*.tar.xz "dist/fcitx5-oxpinyin-$VERSION-debian-testing-x86_64.tar.xz"
-          (cd dist && sha256sum -- *.deb *.tar.xz > debian.sha256 && cat debian.sha256)
+          # The CPack TXZ is built and checked above but is not a release asset.
+          (cd dist && sha256sum -- *.deb > debian.sha256 && cat debian.sha256)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-assets-debian
@@ -417,8 +418,7 @@ jobs:
           }
           expected=("${rpms[0]}" "${srpms[0]}")
           if [[ $DEBIAN == true ]]; then
-            expected+=("fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb"
-                       "fcitx5-oxpinyin-$VERSION-debian-testing-x86_64.tar.xz")
+            expected+=("fcitx5-oxpinyin-$VERSION-debian-testing-amd64.deb")
           fi
           want="$(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)"
           have="$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
@@ -447,15 +447,9 @@ jobs:
           count="$(jq length published.json)"
           (( count <= 1 )) || { echo "error: expected at most 1 published release for $TAG, found $count" >&2; exit 1; }
           if (( count == 0 )); then
-            # Visible only if this token may see drafts (a read token usually
-            # may not: then the upload job decides, with its write token).
-            drafts="$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate --jq '.[]' |
-              jq -s --arg tag "$TAG" '[.[] | select(.tag_name == $tag and .draft == true)] | length')"
-            if (( drafts == 1 )); then
-              decision="No published release for \`$TAG\`, but a draft exists and is reusable: a real run empties it, uploads, verifies and publishes."
-            else
-              decision="No published release for \`$TAG\` is visible ($drafts draft(s) visible to this token): a real run creates a draft (or reuses one), uploads, verifies and publishes."
-            fi
+            # This read token cannot list drafts by design; the upload job's
+            # write token is the authority on whether one exists.
+            decision="No published release for \`$TAG\` is visible. Drafts are not visible to dry runs: a real run creates a draft or reuses an existing one, uploads, verifies and publishes."
           else
             jq '.[0].assets | map({name, size, digest}) | sort_by(.name)' published.json > bundle/meta/previous-assets.json
             mkdir previous
@@ -546,7 +540,7 @@ jobs:
             release_id="$(jq -r '.[0].id' releases.json)"
             [[ $release_id =~ ^[0-9]+$ ]] || fail "expected a numeric release id; got '$release_id'"
           fi
-          echo "release state for $TAG: $state (id: ${release_id:-none yet})"
+          echo "release state for $TAG: $state (id ${release_id:-none yet})"
           if [[ $state == published ]]; then
             [[ $REPLACE == true ]] ||
               fail "expected replace=true to touch the published release $TAG; got replace=$REPLACE (dispatch with replace: true to replace its assets)"
