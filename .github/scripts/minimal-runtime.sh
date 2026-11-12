@@ -26,7 +26,7 @@ for module in testfrontend testim; do
 done
 cp "$BUILD/test/package-runtime" "$ROOT/usr/bin/oxpinyin-package-probe"
 chroot "$ROOT" /usr/bin/ldd /usr/lib64/fcitx5/oxpinyin.so | tee "$BUILD/minimal-runtime-ldd.txt"
-! grep 'not found' "$BUILD/minimal-runtime-ldd.txt"
+if grep 'not found' "$BUILD/minimal-runtime-ldd.txt"; then echo "unresolved libraries" >&2; exit 1; fi
 mkdir -p "$ROOT/tmp/user" "$ROOT/tmp/empty"
 for mode in working no-punctuation; do
     chroot "$ROOT" /usr/bin/env OXPINYIN_USER_DATA_DIR=/tmp/user \
