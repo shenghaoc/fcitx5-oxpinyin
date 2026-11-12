@@ -1,0 +1,49 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: fcitx5-oxpinyin
+Upstream-Contact: Shenghao Chen <shenghaoc@outlook.com>
+Source: https://github.com/shenghaoc/fcitx5-oxpinyin
+Comment:
+ Installed only into the CPack DEB (packaging/cpack/license-files.cmake).
+ .
+ The CC0-1.0 paragraph refers to /usr/share/common-licenses/CC0-1.0 instead
+ of carrying the text. That relies on base-files shipping the file, as
+ base-files 14.x in Debian testing does (checked with 14.2). If this DEB is
+ ever built for an older Debian or Ubuntu release whose base-files lacks it,
+ embed the full CC0-1.0 text in that paragraph.
+ .
+ Files patterns are relative to the source tree. The installed
+ /usr/share/metainfo/org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml is
+ generated from the template org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in.
+ .
+ Stanza order matters: the last matching Files stanza wins, so the metainfo
+ stanza must stay after "Files: *".
+
+Files: *
+Copyright: 2026 Shenghao Chen <shenghaoc@outlook.com>
+License: GPL-3.0-or-later
+
+Files: org.fcitx.Fcitx5.Addon.Oxpinyin.metainfo.xml.in
+Copyright: 2026 Shenghao Chen <shenghaoc@outlook.com>
+License: CC0-1.0
+
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in "/usr/share/common-licenses/GPL-3".
+
+License: CC0-1.0
+ To the extent possible under law, the author(s) have dedicated all copyright
+ and related and neighboring rights to this work to the public domain
+ worldwide. This work is distributed without any warranty.
+ .
+ On Debian systems, the complete text of the CC0 1.0 Universal Public Domain
+ Dedication can be found in "/usr/share/common-licenses/CC0-1.0".

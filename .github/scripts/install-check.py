@@ -28,6 +28,12 @@ required = [f'{libdir}/fcitx5/oxpinyin.so', f'{datadir}/fcitx5/addon/oxpinyin.co
 required += [f'{localedir}/{lang}/LC_MESSAGES/fcitx5-oxpinyin.mo' for lang in linguas]
 def check_payload(stage):
     subprocess.run([sys.executable, str(checker), 'payload', str(stage), localedir], check=True)
+    # License files belong to the packages, each in its own form (CPack stages
+    # them itself; the Fedora spec uses %license). A plain install ships none.
+    for path in (p.relative_to(stage) for p in stage.rglob('*') if p.is_file()):
+        assert not path.name.lower().startswith(('copyright', 'license', 'copying')), path
+        assert not path.is_relative_to(f'{datadir}/doc'), path
+        assert not path.is_relative_to(f'{datadir}/licenses'), path
 with tempfile.TemporaryDirectory() as temp:
     guard = Path(temp)
     for mode in ['destdir', 'prefix']:
